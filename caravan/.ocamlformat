@@ -1,0 +1,5 @@
+profile = janestreet
+margin = 100
+break-cases = fit-or-vertical
+break-infix = fit-or-vertical
+break-sequences = true
