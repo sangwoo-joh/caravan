@@ -1,2 +1,3 @@
 (library
- (name caravan))
+ (name caravan)
+ (libraries omd))
