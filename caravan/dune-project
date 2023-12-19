@@ -5,20 +5,20 @@
 (generate_opam_files true)
 
 (source
- (github username/reponame))
+ (github sangwoo-joh/caravan))
 
-(authors "Author Name")
+(authors "Sangwoo Joh")
 
-(maintainers "Maintainer Name")
+(maintainers "work.sangwoo.joh@gmail.com")
 
-(license LICENSE)
+(license MIT)
 
-(documentation https://url/to/documentation)
+; (documentation https://url/to/documentation)
 
 (package
  (name caravan)
- (synopsis "A short synopsis")
- (description "A longer description")
+ (synopsis "Static site generator with default support for tree-sitter syntax highlighting")
+ (description "Static site generator with default support for tree-sitter syntax highlighting")
  (depends ocaml dune)
  (tags
   (topics "to describe" your project)))
