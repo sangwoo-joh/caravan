@@ -2,4 +2,4 @@
  (name caravan_test)
  (inline_tests)
  (preprocess (pps ppx_expect))
- (libraries base stdio ppx_expect.evaluator))
+ (libraries caravan ppx_expect.evaluator))

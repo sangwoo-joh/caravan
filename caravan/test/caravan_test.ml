@@ -1,7 +1,4 @@
-open! Base
-open Stdio
-
-let%expect_test "hello" =
-  print_endline "Hello";
-  [%expect {|Hello|}]
+let%expect_test "canonical path" =
+  Caravan.Path.canonicalize "///home//me/..//other///" |> print_endline;
+  [%expect "/home/other"]
 ;;
