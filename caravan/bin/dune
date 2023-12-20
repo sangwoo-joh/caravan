@@ -1,4 +1,4 @@
 (executable
  (public_name caravan)
- (name main)
- (libraries caravan))
+ (name caravan)
+ (libraries caravan core_unix.command_unix))
