@@ -106,12 +106,16 @@ module Make (R : Reactor.S) = struct
               | Core.Receive (self, filter) ->
                 Some
                   (fun k ->
-                    match Mailbox.take self.Core.mailbox filter with
-                    | exception exn -> Effect.Deep.discontinue k exn
-                    | Some m -> Effect.Deep.continue k m
-                    | None ->
-                      if cell.Core.alive then
-                        self.Core.waiting <- Some (filter, k))
+                    if self.Core.identity != cell.Core.identity then
+                      Effect.Deep.discontinue k
+                        (Invalid_argument "Troupe.receive: self belongs to another actor")
+                    else
+                      match Mailbox.take self.Core.mailbox filter with
+                      | exception exn -> Effect.Deep.discontinue k exn
+                      | Some m -> Effect.Deep.continue k m
+                      | None ->
+                        if cell.Core.alive then
+                          self.Core.waiting <- Some (filter, k))
               | Core.Await_readable fd ->
                 Some
                   (fun k ->

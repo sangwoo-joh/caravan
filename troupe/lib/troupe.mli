@@ -36,7 +36,9 @@ val receive : 'msg self -> ?matching:('msg -> bool) -> unit -> 'msg
     actor until one arrives. [receive self ~matching ()] instead returns the
     oldest message satisfying [matching], leaving the rest queued in order.
     Exceptions raised by [matching] are raised by [receive] without removing
-    messages from the mailbox. *)
+    messages from the mailbox.
+
+    @raise Invalid_argument if [self] belongs to another actor. *)
 
 val address : 'msg self -> 'msg Address.t
 (** [address self] is the actor's own address. *)

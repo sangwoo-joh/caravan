@@ -267,6 +267,23 @@ let matching_exception parked () =
   Alcotest.(check bool) "sender continues" true !sender_finished;
   Alcotest.(check (list int)) "mailbox retains messages in order" [1; 2; 3] !received
 
+let receive_owner () =
+  let rejected = ref false and owner_received = ref false in
+  let predicate_called = ref false in
+  Troupe.run (fun () ->
+      ignore (Troupe.cast (fun self ->
+          ignore (Troupe.cast (fun _ ->
+              try
+                Troupe.receive self
+                  ~matching:(fun () -> predicate_called := true; true) ()
+              with Invalid_argument _ -> rejected := true));
+          ignore (Troupe.cast (fun _ -> Troupe.send (Troupe.address self) ()));
+          Troupe.receive self ();
+          owner_received := true)));
+  Alcotest.(check bool) "foreign receive rejected in caller" true !rejected;
+  Alcotest.(check bool) "owner still receives its message" true !owner_received;
+  Alcotest.(check bool) "foreign predicate never evaluated" false !predicate_called
+
 let () =
   Alcotest.run "troupe"
     [
@@ -294,6 +311,7 @@ let () =
             (matching_exception false);
           Alcotest.test_case "matching exception while parked" `Quick
             (matching_exception true);
+          Alcotest.test_case "only owner may receive" `Quick receive_owner;
         ] );
       ( "reactor",
         List.concat_map
