@@ -48,6 +48,10 @@ module Make (R : Reactor.S) = struct
         | None -> ()
         | Some (filter, k) -> (
           match Mailbox.take cell.Core.mailbox filter with
+          | exception exn ->
+            cell.Core.waiting <- None;
+            enqueue (fun () ->
+                if cell.Core.alive then Effect.Deep.discontinue k exn)
           | None -> ()
           | Some m ->
             cell.Core.waiting <- None;
@@ -103,6 +107,7 @@ module Make (R : Reactor.S) = struct
                 Some
                   (fun k ->
                     match Mailbox.take self.Core.mailbox filter with
+                    | exception exn -> Effect.Deep.discontinue k exn
                     | Some m -> Effect.Deep.continue k m
                     | None ->
                       if cell.Core.alive then

@@ -6,16 +6,17 @@ let clear = Queue.clear
 let is_empty = Queue.is_empty
 
 let take t p =
-  let n = Queue.length t in
-  let rec loop i found =
-    if i = 0 then found
-    else begin
-      let x = Queue.pop t in
-      match found with
-      | None when p x -> loop (i - 1) (Some x)
-      | _ ->
-        Queue.push x t;
-        loop (i - 1) found
-    end
+  let rec find i next =
+    match next () with
+    | Seq.Nil -> None
+    | Seq.Cons (x, rest) ->
+      if p x then Some (i, x) else find (i + 1) rest
   in
-  loop n None
+  match find 0 (Queue.to_seq t) with
+  | None -> None
+  | Some (selected, x) ->
+    for i = 0 to Queue.length t - 1 do
+      let msg = Queue.pop t in
+      if i <> selected then Queue.push msg t
+    done;
+    Some x

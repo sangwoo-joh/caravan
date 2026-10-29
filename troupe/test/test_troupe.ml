@@ -248,6 +248,25 @@ let finished_mailbox mode () =
   Alcotest.(check bool) "later message discarded" false (Weak.check messages 1);
   ignore (Sys.opaque_identity !retained)
 
+exception Rejected_message
+
+let matching_exception parked () =
+  let caught = ref false and received = ref [] and sender_finished = ref false in
+  Troupe.run (fun () ->
+      let actor = Troupe.cast (fun self ->
+          (try
+             ignore (Troupe.receive self
+                 ~matching:(fun n -> if n = 2 then raise Rejected_message else false)
+                 ())
+           with Rejected_message -> caught := true);
+          received := List.init 3 (fun _ -> Troupe.receive self ())) in
+      if parked then Troupe.sleep 0.;
+      List.iter (Troupe.send actor) [1; 2; 3];
+      sender_finished := true);
+  Alcotest.(check bool) "receiver catches predicate exception" true !caught;
+  Alcotest.(check bool) "sender continues" true !sender_finished;
+  Alcotest.(check (list int)) "mailbox retains messages in order" [1; 2; 3] !received
+
 let () =
   Alcotest.run "troupe"
     [
@@ -271,6 +290,10 @@ let () =
             (finished_mailbox `Return);
           Alcotest.test_case "failed mailbox releases messages" `Quick
             (finished_mailbox `Raise);
+          Alcotest.test_case "matching exception with queued messages" `Quick
+            (matching_exception false);
+          Alcotest.test_case "matching exception while parked" `Quick
+            (matching_exception true);
         ] );
       ( "reactor",
         List.concat_map
