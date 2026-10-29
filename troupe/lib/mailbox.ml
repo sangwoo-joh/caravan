@@ -2,6 +2,7 @@ type 'a t = 'a Queue.t
 
 let create = Queue.create
 let push t x = Queue.push x t
+let clear = Queue.clear
 let is_empty = Queue.is_empty
 
 let take t p =

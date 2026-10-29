@@ -25,7 +25,8 @@ val cast : 'msg body -> 'msg Address.t
 (** [cast body] spawns a new actor running [body] and returns its address. *)
 
 val send : 'msg Address.t -> 'msg -> unit
-(** [send addr msg] delivers [msg] to the actor at [addr]. *)
+(** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
+    stopped or finished actor are discarded. *)
 
 val receive : 'msg self -> ?matching:('msg -> bool) -> unit -> 'msg
 (** [receive self ()] returns the oldest message in the mailbox, blocking the

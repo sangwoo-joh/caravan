@@ -35,17 +35,24 @@ module Make (R : Reactor.S) = struct
      fun (Packed c) k v ->
       enqueue (fun () -> if c.Core.alive then Effect.Deep.continue k v)
     in
+    let finish cell =
+      cell.Core.alive <- false;
+      cell.Core.waiting <- None;
+      Mailbox.clear cell.Core.mailbox
+    in
     let deliver : type a. a Core.cell -> a -> unit =
      fun cell msg ->
-      Mailbox.push cell.Core.mailbox msg;
-      match cell.Core.waiting with
-      | None -> ()
-      | Some (filter, k) -> (
-        match Mailbox.take cell.Core.mailbox filter with
+      if cell.Core.alive then begin
+        Mailbox.push cell.Core.mailbox msg;
+        match cell.Core.waiting with
         | None -> ()
-        | Some m ->
-          cell.Core.waiting <- None;
-          resume (Packed cell) k m)
+        | Some (filter, k) -> (
+          match Mailbox.take cell.Core.mailbox filter with
+          | None -> ()
+          | Some m ->
+            cell.Core.waiting <- None;
+            resume (Packed cell) k m)
+      end
     in
     (* Cancel a (possibly parked) actor: mark it dead, drop its receive
        continuation, and release any descriptor or timer it was blocked on so
@@ -53,8 +60,7 @@ module Make (R : Reactor.S) = struct
        by the [alive] guard in {!resume}. *)
     let stop : type a. a Core.cell -> unit =
      fun cell ->
-      cell.Core.alive <- false;
-      cell.Core.waiting <- None;
+      finish cell;
       let waited_fd =
         Hashtbl.fold
           (fun fd (Packed c, _) acc ->
@@ -75,8 +81,10 @@ module Make (R : Reactor.S) = struct
      fun body cell ->
       let handler =
         {
-          Effect.Deep.retc = (fun () -> ());
-          exnc = (fun e -> raise e);
+          Effect.Deep.retc = (fun () -> finish cell);
+          exnc = (fun e ->
+            finish cell;
+            raise e);
           effc =
             (fun (type b) (eff : b Effect.t) ->
               match eff with

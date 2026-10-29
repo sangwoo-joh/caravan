@@ -4,6 +4,9 @@ type 'a t
 
 val create : unit -> 'a t
 
+val clear : 'a t -> unit
+(** [clear t] removes all messages from [t]. *)
+
 val push : 'a t -> 'a -> unit
 (** [push t x] appends [x] to the back of [t]. *)
 

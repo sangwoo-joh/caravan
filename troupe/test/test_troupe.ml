@@ -228,6 +228,26 @@ let self_stop wait () =
   Alcotest.(check bool) "body reaches next suspension" true !reached_wait;
   Alcotest.(check bool) "body does not resume" false !resumed
 
+let finished_mailbox mode () =
+  let retained = ref None and messages = Weak.create 2 in
+  let send_payload actor index =
+    let payload = Bytes.make 1024 'x' in
+    Weak.set messages index (Some payload);
+    Troupe.send actor payload
+  in
+  (try
+     Troupe.run (fun () ->
+         let actor = Troupe.cast (fun _ -> if mode = `Raise then raise Exit) in
+         retained := Some actor;
+         send_payload actor 0;
+         if mode = `Stop then Troupe.stop actor)
+   with Exit -> ());
+  Troupe.run (fun () -> send_payload (Option.get !retained) 1);
+  Gc.full_major ();
+  Alcotest.(check bool) "queued message released" false (Weak.check messages 0);
+  Alcotest.(check bool) "later message discarded" false (Weak.check messages 1);
+  ignore (Sys.opaque_identity !retained)
+
 let () =
   Alcotest.run "troupe"
     [
@@ -245,6 +265,12 @@ let () =
             (self_stop (fun () -> Troupe.sleep 3600.));
           Alcotest.test_case "self stop before readable wait" `Quick
             (self_stop (fun () -> Troupe.await_readable Unix.stdin));
+          Alcotest.test_case "stopped mailbox releases messages" `Quick
+            (finished_mailbox `Stop);
+          Alcotest.test_case "returned mailbox releases messages" `Quick
+            (finished_mailbox `Return);
+          Alcotest.test_case "failed mailbox releases messages" `Quick
+            (finished_mailbox `Raise);
         ] );
       ( "reactor",
         List.concat_map
