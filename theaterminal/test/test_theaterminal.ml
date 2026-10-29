@@ -19,6 +19,19 @@ let parse_cases () =
   check "\x1b" [ Event.Escape ];
   check "\x1b[Aq" [ Event.Up; Event.Char 'q' ]
 
+let parse_unknown_sequences () =
+  List.iter
+    (fun sequence ->
+      Alcotest.(check (list key)) "whole sequence remains unknown"
+        [ Event.Unknown sequence; Event.Char 'q' ] (Event.parse (sequence ^ "q")))
+    [ "\x1b[3~"; "\x1b[15~"; "\x1b[1;5A"; "\x1b[?25h"; "\x1b[1 q" ];
+  Alcotest.(check (list key)) "adjacent sequences"
+    [ Event.Unknown "\x1b[3~"; Event.Up ] (Event.parse "\x1b[3~\x1b[A");
+  Alcotest.(check (list key)) "incomplete sequence"
+    [ Event.Unknown "\x1b[15" ] (Event.parse "\x1b[15");
+  Alcotest.(check (list key)) "invalid byte remains available"
+    [ Event.Unknown "\x1b["; Event.Enter ] (Event.parse "\x1b[\n")
+
 let cmd_run () =
   let dispatched = ref [] in
   let quit = ref false in
@@ -295,7 +308,8 @@ let keys_batch () =
 let () =
   Alcotest.run "theaterminal"
     [
-      ("event", [ Alcotest.test_case "parse" `Quick parse_cases ]);
+      ("event", [ Alcotest.test_case "parse" `Quick parse_cases;
+                  Alcotest.test_case "unknown sequences" `Quick parse_unknown_sequences ]);
       ("terminal", [ Alcotest.test_case "restores" `Quick terminal_restores ]);
       ("cmd", [ Alcotest.test_case "run" `Quick cmd_run ]);
       ("sub", [ Alcotest.test_case "leaves" `Quick sub_leaves;
