@@ -66,5 +66,9 @@ module Poll : S = struct
       | Some s -> P.Milliseconds (int_of_float (Float.ceil (Float.max 0. s *. 1000.)))
     in
     let nready = P.poll t.poll t.count tmo in
-    if nready > 0 then P.iter_ready t.poll nready (fun _ fd _ -> f fd)
+    if nready > 0 then begin
+      let ready = ref [] in
+      P.iter_ready t.poll nready (fun _ fd _ -> ready := fd :: !ready);
+      List.iter f (List.rev !ready)
+    end
 end

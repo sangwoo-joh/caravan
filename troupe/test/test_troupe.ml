@@ -90,6 +90,24 @@ let await_readable run () =
   Unix.close w;
   Alcotest.(check string) "read what the writer sent" "hi" !got
 
+let simultaneous_readers run () =
+  let pipes = List.init 3 (fun _ -> Unix.pipe ()) in
+  Fun.protect
+    ~finally:(fun () ->
+      List.iter (fun (r, w) -> Unix.close r; Unix.close w) pipes)
+    (fun () ->
+      let received = ref 0 in
+      run (fun () ->
+          List.iter
+            (fun (r, w) ->
+              ignore (Troupe.cast (fun _ ->
+                  Troupe.await_readable r;
+                  let buf = Bytes.create 1 in
+                  received := !received + Unix.read r buf 0 1));
+              ignore (Unix.write_substring w "x" 0 1))
+            pipes);
+      Alcotest.(check int) "every ready reader resumed" 3 !received)
+
 let timers_order run () =
   let log = ref [] in
   run (fun () ->
@@ -145,6 +163,9 @@ let () =
               Alcotest.test_case
                 (Printf.sprintf "await_readable (%s)" name)
                 `Quick (await_readable run);
+              Alcotest.test_case
+                (Printf.sprintf "simultaneous readers (%s)" name)
+                `Quick (simultaneous_readers run);
               Alcotest.test_case
                 (Printf.sprintf "timers fire in order (%s)" name)
                 `Quick (timers_order run);
