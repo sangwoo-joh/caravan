@@ -63,7 +63,10 @@ module Poll : S = struct
     let tmo : P.poll_timeout =
       match timeout with
       | None -> P.Infinite
-      | Some s -> P.Milliseconds (int_of_float (Float.ceil (Float.max 0. s *. 1000.)))
+      | Some s ->
+        let milliseconds = Float.ceil (Float.max 0. s *. 1000.) in
+        let limit = Float.min (Int32.to_float Int32.max_int) (float_of_int max_int) in
+        P.Milliseconds (int_of_float (Float.min limit milliseconds))
     in
     let nready = P.poll t.poll t.count tmo in
     if nready > 0 then begin

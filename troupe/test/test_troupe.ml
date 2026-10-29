@@ -284,6 +284,29 @@ let receive_owner () =
   Alcotest.(check bool) "owner still receives its message" true !owner_received;
   Alcotest.(check bool) "foreign predicate never evaluated" false !predicate_called
 
+let large_poll_timeout () =
+  let r, w = Unix.pipe () in
+  match Unix.fork () with
+  | 0 ->
+    Unix.close r;
+    Unix.sleepf 0.05;
+    ignore (Unix.write_substring w "x" 0 1);
+    Unix.close w;
+    Unix._exit 0
+  | child ->
+    Unix.close w;
+    Fun.protect
+      ~finally:(fun () ->
+        ignore (Unix.waitpid [] child);
+        Unix.close r)
+      (fun () ->
+        let reactor = Troupe.Reactor.Poll.create () in
+        Troupe.Reactor.Poll.add_reader reactor r;
+        let ready = ref false in
+        Troupe.Reactor.Poll.wait reactor ~timeout:(Some 4294967.296)
+          (fun fd -> ready := fd = r);
+        Alcotest.(check bool) "large timeout waits for readiness" true !ready)
+
 let () =
   Alcotest.run "troupe"
     [
@@ -334,4 +357,6 @@ let () =
                 `Quick (timers_order run);
             ])
           backends );
+      ( "poll",
+        [Alcotest.test_case "32-bit timeout overflow" `Quick large_poll_timeout] );
     ]
