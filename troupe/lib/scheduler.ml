@@ -96,17 +96,23 @@ module Make (R : Reactor.S) = struct
                   (fun k ->
                     match Mailbox.take self.Core.mailbox filter with
                     | Some m -> Effect.Deep.continue k m
-                    | None -> self.Core.waiting <- Some (filter, k))
+                    | None ->
+                      if cell.Core.alive then
+                        self.Core.waiting <- Some (filter, k))
               | Core.Await_readable fd ->
                 Some
                   (fun k ->
-                    Hashtbl.replace fd_waiters fd (Packed cell, k);
-                    R.add_reader reactor fd)
+                    if cell.Core.alive then begin
+                      Hashtbl.replace fd_waiters fd (Packed cell, k);
+                      R.add_reader reactor fd
+                    end)
               | Core.Sleep seconds ->
                 Some
                   (fun k ->
-                    let deadline = Unix.gettimeofday () +. seconds in
-                    timers := (deadline, Packed cell, k) :: !timers)
+                    if cell.Core.alive then begin
+                      let deadline = Unix.gettimeofday () +. seconds in
+                      timers := (deadline, Packed cell, k) :: !timers
+                    end)
               | Core.Stop target ->
                 Some
                   (fun k ->

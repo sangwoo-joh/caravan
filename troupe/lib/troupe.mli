@@ -47,7 +47,8 @@ val sleep : float -> unit
 val stop : 'msg Address.t -> unit
 (** [stop addr] cancels the actor at [addr]: it never runs again, and any
     descriptor or timer it was blocked on is released. Messages already queued
-    for it are discarded. Stopping a finished actor is a no-op. *)
+    for it are discarded. Stopping a finished actor is a no-op. Stopping yourself
+    takes effect at your next suspension. *)
 
 module Reactor = Reactor
 (** I/O readiness backends. Pass one to {!Scheduler.Make}. *)

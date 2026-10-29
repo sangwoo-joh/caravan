@@ -210,6 +210,24 @@ let stop_before_first_run () =
       Troupe.stop a);
   Alcotest.(check bool) "actor stopped before running never ran" false !fired
 
+let self_stop wait () =
+  let module S = Troupe.Scheduler.Make (struct
+    type t = unit
+    let create () = ()
+    let add_reader () _ = Alcotest.fail "stopped actor registered a reader"
+    let remove_reader () _ = ()
+    let wait () ~timeout:_ _ = Alcotest.fail "stopped actor kept scheduler waiting"
+  end) in
+  let reached_wait = ref false and resumed = ref false in
+  S.run (fun () ->
+      ignore (Troupe.cast (fun self ->
+          Troupe.stop (Troupe.address self);
+          reached_wait := true;
+          wait ();
+          resumed := true)));
+  Alcotest.(check bool) "body reaches next suspension" true !reached_wait;
+  Alcotest.(check bool) "body does not resume" false !resumed
+
 let () =
   Alcotest.run "troupe"
     [
@@ -223,6 +241,10 @@ let () =
           Alcotest.test_case "stop cancels sleeping actor" `Quick
             stop_cancels_sleeping_actor;
           Alcotest.test_case "stop before first run" `Quick stop_before_first_run;
+          Alcotest.test_case "self stop before sleep" `Quick
+            (self_stop (fun () -> Troupe.sleep 3600.));
+          Alcotest.test_case "self stop before readable wait" `Quick
+            (self_stop (fun () -> Troupe.await_readable Unix.stdin));
         ] );
       ( "reactor",
         List.concat_map
