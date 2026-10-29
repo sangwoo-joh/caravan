@@ -1,3 +1,6 @@
 (test
  (name test_theaterminal)
- (libraries theaterminal alcotest unix))
+ (libraries theaterminal alcotest unix)
+ (foreign_stubs
+  (language c)
+  (names terminal_test_stubs)))

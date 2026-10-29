@@ -208,10 +208,55 @@ let keys_refresh_callback () =
             }));
   Alcotest.(check (list int)) "latest key handler" [ 0; 1 ] (List.rev !values)
 
+external open_pty : unit -> Unix.file_descr * Unix.file_descr
+  = "theaterminal_test_open_pty"
+
+let with_terminal f =
+  let master, slave = open_pty () in
+  let saved_in = Unix.dup Unix.stdin and saved_out = Unix.dup Unix.stdout in
+  flush stdout;
+  Fun.protect
+    ~finally:(fun () ->
+      flush stdout;
+      Unix.dup2 saved_in Unix.stdin;
+      Unix.dup2 saved_out Unix.stdout;
+      List.iter Unix.close [ master; slave; saved_in; saved_out ])
+    (fun () ->
+      Unix.dup2 slave Unix.stdin;
+      Unix.dup2 slave Unix.stdout;
+      f master)
+
+let terminal_restores () =
+  List.iter
+    (fun fail ->
+      with_terminal (fun _ ->
+          let before = Unix.tcgetattr Unix.stdin in
+          let app =
+            {
+              init = ((), Cmd.none);
+              update = (fun () () -> ((), Cmd.none));
+              view = (fun () -> if fail then failwith "view failed" else "frame");
+              subscriptions = (fun () -> Sub.none);
+            }
+          in
+          if fail then
+            Alcotest.check_raises "view exception propagates" (Failure "view failed")
+              (fun () -> run app)
+          else run app;
+          let after = Unix.tcgetattr Unix.stdin in
+          Alcotest.(check bool) "terminal attributes restored" true (before = after);
+          let changed = { before with c_echo = not before.c_echo } in
+          Unix.tcsetattr Unix.stdin Unix.TCSANOW changed;
+          Terminal.release ();
+          Alcotest.(check bool) "release does not restore twice" true
+            (changed = Unix.tcgetattr Unix.stdin)))
+    [ false; true ]
+
 let () =
   Alcotest.run "theaterminal"
     [
       ("event", [ Alcotest.test_case "parse" `Quick parse_cases ]);
+      ("terminal", [ Alcotest.test_case "restores" `Quick terminal_restores ]);
       ("cmd", [ Alcotest.test_case "run" `Quick cmd_run ]);
       ("sub", [ Alcotest.test_case "leaves" `Quick sub_leaves ]);
       ( "loop",

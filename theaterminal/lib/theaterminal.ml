@@ -104,9 +104,10 @@ let run_app ~render ~on_quit app =
              loop ())))
 
 let run app =
-  Terminal.setup ();
-  run_app app ~render:Terminal.render ~on_quit:(fun () ->
-      Terminal.release ();
-      exit 0)
+  Fun.protect ~finally:Terminal.release (fun () ->
+      Terminal.setup ();
+      run_app app ~render:Terminal.render ~on_quit:(fun () ->
+          Terminal.release ();
+          exit 0))
 
 let run_headless ~render app = run_app app ~render ~on_quit:ignore

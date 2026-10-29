@@ -5,10 +5,12 @@ let write s =
   flush stdout
 
 let release () =
-  (match !original with
-  | Some attr -> Unix.tcsetattr Unix.stdin Unix.TCSANOW attr
-  | None -> ());
-  write "\x1b[?25h\x1b[?1049l"
+  match !original with
+  | Some attr ->
+    Unix.tcsetattr Unix.stdin Unix.TCSANOW attr;
+    original := None;
+    write "\x1b[?25h\x1b[?1049l"
+  | None -> ()
 
 let dimensions = ref (24, 80)
 let size () = !dimensions

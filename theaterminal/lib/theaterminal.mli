@@ -24,7 +24,8 @@ type ('model, 'msg) app = {
 val run : ('model, 'msg) app -> unit
 (** [run app] takes over the terminal and runs the event loop until a {!Cmd.quit}
     is issued, at which point it restores the terminal and exits the process.
-    Does not return under normal use. *)
+    Returns with the terminal restored if no messages or active sources remain.
+    Restores the terminal before propagating an exception. *)
 
 val run_headless : render:(string -> unit) -> ('model, 'msg) app -> unit
 (** Like {!run} but without touching the terminal: frames go to [render] and a
