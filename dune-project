@@ -32,7 +32,8 @@
  (depends
   (ocaml (>= 5.1))
   dune
-  troupe))
+  troupe
+  (alcotest :with-test)))
 
 (package
  (name caravan)
