@@ -36,7 +36,7 @@ let sub_leaves () =
          (Sub.batch
             [ Sub.keys (fun _ -> None); Sub.every ~key:"clock" 0.5 (fun () -> ()) ]))
   in
-  Alcotest.(check (list string)) "keyed leaves in order" [ "keys"; "clock" ] keys
+  Alcotest.(check (list string)) "keyed leaves in order" [ "keys"; "every:key:clock" ] keys
 
 (* A counter app: [init] dispatches three increments, then the loop settles. *)
 let loop_counts () =
@@ -252,13 +252,54 @@ let terminal_restores () =
             (changed = Unix.tcgetattr Unix.stdin)))
     [ false; true ]
 
+let sub_distinct_keys () =
+  let leaves =
+    Sub.leaves
+      (Sub.batch
+         [ Sub.keys (fun _ -> None);
+           Sub.every ~key:"keys" 1. (fun () -> ());
+           Sub.every 1.0000001 (fun () -> ());
+           Sub.every 1.0000002 (fun () -> ());
+           Sub.every ~key:"interval:1.0000001" 1. (fun () -> ()) ])
+  in
+  Alcotest.(check int) "all identities are distinct" 5
+    (List.length (List.sort_uniq String.compare (List.map fst leaves)))
+
+let keys_batch () =
+  let saved = Unix.dup Unix.stdin in
+  let reader, writer = Unix.pipe () in
+  let values = ref [] in
+  Fun.protect
+    ~finally:(fun () ->
+      Unix.dup2 saved Unix.stdin;
+      List.iter Unix.close [ saved; reader; writer ])
+    (fun () ->
+      Unix.dup2 reader Unix.stdin;
+      ignore (Unix.write_substring writer "x" 0 1);
+      with_timeout (fun () ->
+          run_headless ~render:ignore
+            {
+              init = (0, Cmd.none);
+              update = (fun value n ->
+                  values := value :: !values;
+                  (n + 1, if n = 2 then Cmd.quit else Cmd.none));
+              view = string_of_int;
+              subscriptions = (fun _ -> Sub.batch
+                  [ Sub.keys (fun _ -> Some "first");
+                    Sub.batch [ Sub.keys (fun _ -> Some "second") ];
+                    Sub.every ~key:"keys" 0.01 (fun () -> "timer") ]);
+            }));
+  Alcotest.(check (list string)) "all handlers and timer run"
+    [ "first"; "second"; "timer" ] (List.rev !values)
+
 let () =
   Alcotest.run "theaterminal"
     [
       ("event", [ Alcotest.test_case "parse" `Quick parse_cases ]);
       ("terminal", [ Alcotest.test_case "restores" `Quick terminal_restores ]);
       ("cmd", [ Alcotest.test_case "run" `Quick cmd_run ]);
-      ("sub", [ Alcotest.test_case "leaves" `Quick sub_leaves ]);
+      ("sub", [ Alcotest.test_case "leaves" `Quick sub_leaves;
+                Alcotest.test_case "distinct keys" `Quick sub_distinct_keys ]);
       ( "loop",
         [
           Alcotest.test_case "counts" `Quick loop_counts;
@@ -270,5 +311,6 @@ let () =
           Alcotest.test_case "timer interval refresh" `Quick timer_refreshes_interval;
           Alcotest.test_case "timer keeps deadline" `Quick timer_keeps_deadline;
           Alcotest.test_case "keys callback refresh" `Quick keys_refresh_callback;
+          Alcotest.test_case "keys batch" `Quick keys_batch;
         ] );
     ]

@@ -19,7 +19,8 @@ val every : ?key:string -> float -> (unit -> 'msg) -> 'msg t
     or to keep a timer stable while its interval changes. *)
 
 val batch : 'msg t list -> 'msg t
-(** Combine several subscriptions. *)
+(** [batch subs] combines the subscriptions in [subs]. Each key press is
+    delivered to every keyboard handler in list order. *)
 
 val leaves : 'msg t -> (string * 'msg source) list
 (** Flatten to keyed leaf sources. Keys are stable across evaluations, so the

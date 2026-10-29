@@ -10,10 +10,30 @@ type ('model, 'msg) app = {
   subscriptions : 'model -> 'msg Sub.t;
 }
 
+type 'msg source =
+  | Keys of (Event.key -> 'msg option) list
+  | Every of float * (unit -> 'msg)
+
+let sources subscriptions =
+  let leaves = Sub.leaves subscriptions in
+  let keys =
+    List.filter_map
+      (function _, Sub.Keys f -> Some f | _, Sub.Every _ -> None)
+      leaves
+  in
+  let timers =
+    List.filter_map
+      (function
+        | key, Sub.Every (seconds, f) -> Some (key, Every (seconds, f))
+        | _, Sub.Keys _ -> None)
+      leaves
+  in
+  match keys with [] -> timers | _ -> ("keys", Keys keys) :: timers
+
 (* One actor per subscription source, each feeding [runtime]'s mailbox. *)
 let spawn_source source ~runtime =
   match source with
-  | Sub.Keys f ->
+  | Keys f ->
     let callback = ref f in
     let actor =
       Troupe.cast (fun _ ->
@@ -24,9 +44,9 @@ let spawn_source source ~runtime =
             if n > 0 then begin
               List.iter
                 (fun k ->
-                  match !callback k with
-                  | Some m -> Troupe.send runtime m
-                  | None -> ())
+                  List.iter
+                    (fun f -> Option.iter (Troupe.send runtime) (f k))
+                    !callback)
                 (Event.parse (Bytes.sub_string buf 0 n));
               loop ()
             end
@@ -34,9 +54,9 @@ let spawn_source source ~runtime =
           loop ())
     in
     (actor, function
-      | Sub.Keys f -> callback := f; true
-      | Sub.Every _ -> false)
-  | Sub.Every (seconds, f) ->
+      | Keys f -> callback := f; true
+      | Every _ -> false)
+  | Every (seconds, f) ->
     let callback = ref f in
     let actor =
       Troupe.cast (fun _ ->
@@ -48,7 +68,7 @@ let spawn_source source ~runtime =
           loop ())
     in
     (actor, function
-      | Sub.Every (interval, f) when interval = seconds -> callback := f; true
+      | Every (interval, f) when interval = seconds -> callback := f; true
       | _ -> false)
 
 let run_app ~render ~on_quit app =
@@ -64,7 +84,7 @@ let run_app ~render ~on_quit app =
                 sources whose key disappeared, start the ones that appeared. *)
              let registry = Hashtbl.create 8 in
              let reconcile model =
-               let wanted = Sub.leaves (app.subscriptions model) in
+               let wanted = sources (app.subscriptions model) in
                let keep key = List.mem_assoc key wanted in
                Hashtbl.iter
                  (fun key (addr, _) -> if not (keep key) then Troupe.stop addr)

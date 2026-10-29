@@ -12,7 +12,9 @@ let keys f = Leaf ("keys", Keys f)
 
 let every ?key seconds f =
   let key =
-    match key with Some k -> k | None -> Printf.sprintf "every:%g" seconds
+    match key with
+    | Some k -> "every:key:" ^ k
+    | None -> Printf.sprintf "every:interval:%.17g" seconds
   in
   Leaf (key, Every (seconds, f))
 
