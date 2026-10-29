@@ -133,7 +133,19 @@ module Make (R : Reactor.S) = struct
       timers := pending;
       List.iter (fun (_, owner, k) -> resume owner k ()) expired
     in
+    let wait timeout =
+      R.wait reactor ~timeout (fun fd ->
+          match Hashtbl.find_opt fd_waiters fd with
+          | None -> ()
+          | Some (owner, k) ->
+            Hashtbl.remove fd_waiters fd;
+            R.remove_reader reactor fd;
+            resume owner k ())
+    in
     let rec loop () =
+      fire_expired ();
+      if not (Queue.is_empty run_queue) && Hashtbl.length fd_waiters > 0 then
+        wait (Some 0.);
       match Queue.take_opt run_queue with
       | Some thunk ->
         thunk ();
@@ -146,14 +158,7 @@ module Make (R : Reactor.S) = struct
             | None -> None
             | Some d -> Some (Float.max 0.0 (d -. Unix.gettimeofday ()))
           in
-          R.wait reactor ~timeout (fun fd ->
-              match Hashtbl.find_opt fd_waiters fd with
-              | None -> ()
-              | Some (owner, k) ->
-                Hashtbl.remove fd_waiters fd;
-                R.remove_reader reactor fd;
-                resume owner k ());
-          fire_expired ();
+          wait timeout;
           loop ()
         end
     in

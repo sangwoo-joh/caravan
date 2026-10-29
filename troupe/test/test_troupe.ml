@@ -99,13 +99,16 @@ let simultaneous_readers run () =
       let received = ref 0 in
       run (fun () ->
           List.iter
-            (fun (r, w) ->
+            (fun (r, _) ->
               ignore (Troupe.cast (fun _ ->
                   Troupe.await_readable r;
                   let buf = Bytes.create 1 in
-                  received := !received + Unix.read r buf 0 1));
-              ignore (Unix.write_substring w "x" 0 1))
-            pipes);
+                  received := !received + Unix.read r buf 0 1)))
+            pipes;
+          ignore (Troupe.cast (fun _ ->
+              List.iter
+                (fun (_, w) -> ignore (Unix.write_substring w "x" 0 1))
+                pipes)));
       Alcotest.(check int) "every ready reader resumed" 3 !received)
 
 let addresses_across_runs () =
@@ -139,6 +142,38 @@ let stop_old_addresses run () =
           ignore (Unix.write_substring w "x" 0 1));
       Alcotest.(check bool) "current timer survives" true !timer_fired;
       Alcotest.(check bool) "current reader survives" true !reader_fired)
+
+let waits_during_message_traffic run () =
+  let r, w = Unix.pipe () in
+  Fun.protect ~finally:(fun () -> Unix.close r; Unix.close w) (fun () ->
+      let timer_fired = ref false and reader_fired = ref false in
+      let observed = ref (false, false) and exchanges = ref 0 in
+      run (fun () ->
+          ignore (Troupe.cast (fun _ ->
+              Troupe.sleep 0.;
+              timer_fired := true));
+          ignore (Troupe.cast (fun _ ->
+              Troupe.await_readable r;
+              reader_fired := true));
+          let peer = ref None in
+          let rec exchange self other =
+            Troupe.receive self ();
+            incr exchanges;
+            if !exchanges = 256 then
+              observed := (!timer_fired, !reader_fired)
+            else begin
+              Troupe.send (other ()) ();
+              exchange self other
+            end
+          in
+          let a = Troupe.cast (fun self ->
+              exchange self (fun () -> Option.get !peer)) in
+          let b = Troupe.cast (fun self -> exchange self (fun () -> a)) in
+          peer := Some b;
+          Troupe.send a ();
+          ignore (Unix.write_substring w "x" 0 1));
+      Alcotest.(check (pair bool bool))
+        "timer and reader run before message traffic ends" (true, true) !observed)
 
 let timers_order run () =
   let log = ref [] in
@@ -202,6 +237,9 @@ let () =
               Alcotest.test_case
                 (Printf.sprintf "stop old addresses (%s)" name)
                 `Quick (stop_old_addresses run);
+              Alcotest.test_case
+                (Printf.sprintf "waits during message traffic (%s)" name)
+                `Quick (waits_during_message_traffic run);
               Alcotest.test_case
                 (Printf.sprintf "timers fire in order (%s)" name)
                 `Quick (timers_order run);
