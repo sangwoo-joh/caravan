@@ -136,6 +136,78 @@ let loop_quits_with_keys () =
                     [ Sub.keys (fun _ -> None); Sub.every 0.001 (fun () -> ()) ]);
             }))
 
+let timer_refreshes_callback () =
+  let values = ref [] in
+  with_timeout (fun () ->
+      run_headless ~render:ignore
+        {
+          init = (0, Cmd.none);
+          update = (fun captured n -> values := captured :: !values; (n + 1, Cmd.none));
+          view = string_of_int;
+          subscriptions =
+            (fun n ->
+              if n < 2 then Sub.every ~key:"clock" 0.001 (fun () -> n)
+              else Sub.none);
+        });
+  Alcotest.(check (list int)) "latest model" [ 0; 1 ] (List.rev !values)
+
+let timer_refreshes_interval () =
+  let times = ref [] in
+  with_timeout (fun () ->
+      run_headless ~render:ignore
+        {
+          init = (0, Cmd.none);
+          update =
+            (fun () n -> times := Unix.gettimeofday () :: !times; (n + 1, Cmd.none));
+          view = string_of_int;
+          subscriptions =
+            (fun n ->
+              if n < 2 then
+                Sub.every ~key:"clock" (if n = 0 then 0.001 else 0.05) (fun () -> ())
+              else Sub.none);
+        });
+  match !times with
+  | [ second; first ] ->
+    Alcotest.(check bool) "new interval is used" true (second -. first >= 0.05)
+  | _ -> Alcotest.fail "expected two timer ticks"
+
+let timer_keeps_deadline () =
+  with_timeout (fun () ->
+      run_headless ~render:ignore
+        {
+          init = ((), Cmd.none);
+          update = (fun quit () -> ((), if quit then Cmd.quit else Cmd.none));
+          view = (fun () -> "");
+          subscriptions =
+            (fun () -> Sub.batch
+                [ Sub.every ~key:"fast" 0.001 (fun () -> false);
+                  Sub.every ~key:"slow" 0.02 (fun () -> true) ]);
+        })
+
+let keys_refresh_callback () =
+  let saved = Unix.dup Unix.stdin in
+  let reader, writer = Unix.pipe () in
+  let values = ref [] in
+  Fun.protect
+    ~finally:(fun () ->
+      Unix.dup2 saved Unix.stdin;
+      List.iter Unix.close [ saved; reader; writer ])
+    (fun () ->
+      Unix.dup2 reader Unix.stdin;
+      ignore (Unix.write_substring writer "a" 0 1);
+      with_timeout (fun () ->
+          run_headless ~render:ignore
+            {
+              init = (0, Cmd.none);
+              update = (fun captured n ->
+                  values := captured :: !values;
+                  if n = 0 then ignore (Unix.write_substring writer "b" 0 1);
+                  (n + 1, if n = 1 then Cmd.quit else Cmd.none));
+              view = string_of_int;
+              subscriptions = (fun n -> Sub.keys (fun _ -> Some n));
+            }));
+  Alcotest.(check (list int)) "latest key handler" [ 0; 1 ] (List.rev !values)
+
 let () =
   Alcotest.run "theaterminal"
     [
@@ -149,5 +221,9 @@ let () =
           Alcotest.test_case "quits with timer" `Quick loop_quits_with_timer;
           Alcotest.test_case "quits with keys" `Quick loop_quits_with_keys;
           Alcotest.test_case "dynamic sub stops" `Quick dynamic_sub_stops;
+          Alcotest.test_case "timer callback refresh" `Quick timer_refreshes_callback;
+          Alcotest.test_case "timer interval refresh" `Quick timer_refreshes_interval;
+          Alcotest.test_case "timer keeps deadline" `Quick timer_keeps_deadline;
+          Alcotest.test_case "keys callback refresh" `Quick keys_refresh_callback;
         ] );
     ]

@@ -14,28 +14,42 @@ type ('model, 'msg) app = {
 let spawn_source source ~runtime =
   match source with
   | Sub.Keys f ->
-    Troupe.cast (fun _ ->
-        let buf = Bytes.create 1024 in
-        let rec loop () =
-          Troupe.await_readable Unix.stdin;
-          let n = Unix.read Unix.stdin buf 0 (Bytes.length buf) in
-          if n > 0 then begin
-            List.iter
-              (fun k ->
-                match f k with Some m -> Troupe.send runtime m | None -> ())
-              (Event.parse (Bytes.sub_string buf 0 n));
-            loop ()
-          end
-        in
-        loop ())
+    let callback = ref f in
+    let actor =
+      Troupe.cast (fun _ ->
+          let buf = Bytes.create 1024 in
+          let rec loop () =
+            Troupe.await_readable Unix.stdin;
+            let n = Unix.read Unix.stdin buf 0 (Bytes.length buf) in
+            if n > 0 then begin
+              List.iter
+                (fun k ->
+                  match !callback k with
+                  | Some m -> Troupe.send runtime m
+                  | None -> ())
+                (Event.parse (Bytes.sub_string buf 0 n));
+              loop ()
+            end
+          in
+          loop ())
+    in
+    (actor, function
+      | Sub.Keys f -> callback := f; true
+      | Sub.Every _ -> false)
   | Sub.Every (seconds, f) ->
-    Troupe.cast (fun _ ->
-        let rec loop () =
-          Troupe.sleep seconds;
-          Troupe.send runtime (f ());
-          loop ()
-        in
-        loop ())
+    let callback = ref f in
+    let actor =
+      Troupe.cast (fun _ ->
+          let rec loop () =
+            Troupe.sleep seconds;
+            Troupe.send runtime (!callback ());
+            loop ()
+          in
+          loop ())
+    in
+    (actor, function
+      | Sub.Every (interval, f) when interval = seconds -> callback := f; true
+      | _ -> false)
 
 let run_app ~render ~on_quit app =
   let init_model, init_cmd = app.init in
@@ -48,21 +62,22 @@ let run_app ~render ~on_quit app =
              let request_quit () = stop := true in
              (* Diff the desired subscriptions against the running ones: stop the
                 sources whose key disappeared, start the ones that appeared. *)
-             let registry : (string, _ Troupe.Address.t) Hashtbl.t =
-               Hashtbl.create 8
-             in
+             let registry = Hashtbl.create 8 in
              let reconcile model =
                let wanted = Sub.leaves (app.subscriptions model) in
                let keep key = List.mem_assoc key wanted in
                Hashtbl.iter
-                 (fun key addr -> if not (keep key) then Troupe.stop addr)
+                 (fun key (addr, _) -> if not (keep key) then Troupe.stop addr)
                  registry;
                Hashtbl.filter_map_inplace
                  (fun key addr -> if keep key then Some addr else None)
                  registry;
                List.iter
                  (fun (key, source) ->
-                   if not (Hashtbl.mem registry key) then
+                   match Hashtbl.find_opt registry key with
+                   | Some (_, refresh) when refresh source -> ()
+                   | existing ->
+                     Option.iter (fun (addr, _) -> Troupe.stop addr) existing;
                      Hashtbl.replace registry key (spawn_source source ~runtime))
                  wanted
              in
@@ -72,7 +87,7 @@ let run_app ~render ~on_quit app =
              Cmd.run init_cmd ~dispatch ~on_quit:request_quit;
              let rec loop () =
                if !stop then begin
-                 Hashtbl.iter (fun _ addr -> Troupe.stop addr) registry;
+                 Hashtbl.iter (fun _ (addr, _) -> Troupe.stop addr) registry;
                  Hashtbl.clear registry;
                  on_quit ()
                end
