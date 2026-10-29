@@ -6,6 +6,7 @@
 
 type 'msg cell = {
   id : int;
+  identity : unit ref;
   mailbox : 'msg Mailbox.t;
   mutable waiting :
     (('msg -> bool) * ('msg, unit) Effect.Deep.continuation) option;

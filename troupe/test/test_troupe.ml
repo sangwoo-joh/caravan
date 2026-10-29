@@ -108,6 +108,38 @@ let simultaneous_readers run () =
             pipes);
       Alcotest.(check int) "every ready reader resumed" 3 !received)
 
+let addresses_across_runs () =
+  let old = ref None in
+  Troupe.run (fun () -> old := Some (Troupe.cast (fun _ -> ())));
+  Troupe.run (fun () ->
+      let current = Troupe.cast (fun _ -> ()) in
+      Alcotest.(check bool) "address equals itself" true
+        (Troupe.Address.equal current current);
+      Alcotest.(check bool) "different runs have distinct addresses" false
+        (Troupe.Address.equal (Option.get !old) current))
+
+let stop_old_addresses run () =
+  let old_timer = ref None and old_reader = ref None in
+  run (fun () ->
+      old_timer := Some (Troupe.cast (fun _ -> ()));
+      old_reader := Some (Troupe.cast (fun _ -> ())));
+  let r, w = Unix.pipe () in
+  Fun.protect ~finally:(fun () -> Unix.close r; Unix.close w) (fun () ->
+      let timer_fired = ref false and reader_fired = ref false in
+      run (fun () ->
+          ignore (Troupe.cast (fun _ ->
+              Troupe.sleep 0.01;
+              timer_fired := true));
+          ignore (Troupe.cast (fun _ ->
+              Troupe.await_readable r;
+              reader_fired := true));
+          Troupe.sleep 0.;
+          Troupe.stop (Option.get !old_timer);
+          Troupe.stop (Option.get !old_reader);
+          ignore (Unix.write_substring w "x" 0 1));
+      Alcotest.(check bool) "current timer survives" true !timer_fired;
+      Alcotest.(check bool) "current reader survives" true !reader_fired)
+
 let timers_order run () =
   let log = ref [] in
   run (fun () ->
@@ -152,6 +184,7 @@ let () =
           Alcotest.test_case "selective receive" `Quick selective_receive;
           Alcotest.test_case "request/reply" `Quick request_reply;
           Alcotest.test_case "wake after park" `Quick wake_after_park;
+          Alcotest.test_case "addresses across runs" `Quick addresses_across_runs;
           Alcotest.test_case "stop cancels sleeping actor" `Quick
             stop_cancels_sleeping_actor;
           Alcotest.test_case "stop before first run" `Quick stop_before_first_run;
@@ -166,6 +199,9 @@ let () =
               Alcotest.test_case
                 (Printf.sprintf "simultaneous readers (%s)" name)
                 `Quick (simultaneous_readers run);
+              Alcotest.test_case
+                (Printf.sprintf "stop old addresses (%s)" name)
+                `Quick (stop_old_addresses run);
               Alcotest.test_case
                 (Printf.sprintf "timers fire in order (%s)" name)
                 `Quick (timers_order run);

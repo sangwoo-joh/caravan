@@ -4,7 +4,7 @@ type 'msg body = 'msg self -> unit
 module Address = struct
   type 'msg t = 'msg Core.cell
 
-  let equal a b = a.Core.id = b.Core.id
+  let equal a b = a.Core.identity == b.Core.identity
   let pp fmt a = Format.fprintf fmt "<actor:%d>" a.Core.id
 end
 

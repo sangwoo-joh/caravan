@@ -9,6 +9,7 @@ module Make (R : Reactor.S) = struct
       incr next_id;
       {
         Core.id = !next_id;
+        identity = ref ();
         mailbox = Mailbox.create ();
         waiting = None;
         alive = true;
@@ -57,7 +58,7 @@ module Make (R : Reactor.S) = struct
       let waited_fd =
         Hashtbl.fold
           (fun fd (Packed c, _) acc ->
-            if c.Core.id = cell.Core.id then Some fd else acc)
+            if c.Core.identity == cell.Core.identity then Some fd else acc)
           fd_waiters None
       in
       (match waited_fd with
@@ -66,7 +67,9 @@ module Make (R : Reactor.S) = struct
         R.remove_reader reactor fd
       | None -> ());
       timers :=
-        List.filter (fun (_, Packed c, _) -> c.Core.id <> cell.Core.id) !timers
+        List.filter
+          (fun (_, Packed c, _) -> c.Core.identity != cell.Core.identity)
+          !timers
     in
     let rec run_body : type a. a Core.body -> a Core.cell -> unit =
      fun body cell ->
