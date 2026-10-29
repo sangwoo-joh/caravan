@@ -86,6 +86,56 @@ let dynamic_sub_stops () =
   run_headless ~render:(fun s -> frames := s :: !frames) app;
   Alcotest.(check string) "settled at 3 after timer stopped" "3" (List.hd !frames)
 
+let with_timeout f =
+  let previous =
+    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "test timed out"))
+  in
+  Fun.protect
+    ~finally:(fun () ->
+      ignore (Unix.alarm 0);
+      Sys.set_signal Sys.sigalrm previous)
+    (fun () ->
+      ignore (Unix.alarm 2);
+      f ())
+
+let loop_quits_with_timer () =
+  List.iter
+    (fun immediately ->
+      let ticks = ref 0 in
+      with_timeout (fun () ->
+          run_headless ~render:ignore
+            {
+              init = ((), if immediately then Cmd.quit else Cmd.none);
+              update = (fun () () -> ((), Cmd.quit));
+              view = (fun () -> "");
+              subscriptions =
+                (fun () -> Sub.every 0.001 (fun () -> incr ticks));
+            });
+      Alcotest.(check int) "timer stops at quit" (if immediately then 0 else 1)
+        !ticks)
+    [ true; false ]
+
+let loop_quits_with_keys () =
+  let saved = Unix.dup Unix.stdin in
+  let reader, writer = Unix.pipe () in
+  Fun.protect
+    ~finally:(fun () ->
+      Unix.dup2 saved Unix.stdin;
+      List.iter Unix.close [ saved; reader; writer ])
+    (fun () ->
+      Unix.dup2 reader Unix.stdin;
+      with_timeout (fun () ->
+          run_headless ~render:ignore
+            {
+              init = ((), Cmd.none);
+              update = (fun () () -> ((), Cmd.quit));
+              view = (fun () -> "");
+              subscriptions =
+                (fun () ->
+                  Sub.batch
+                    [ Sub.keys (fun _ -> None); Sub.every 0.001 (fun () -> ()) ]);
+            }))
+
 let () =
   Alcotest.run "theaterminal"
     [
@@ -96,6 +146,8 @@ let () =
         [
           Alcotest.test_case "counts" `Quick loop_counts;
           Alcotest.test_case "quits" `Quick loop_quits;
+          Alcotest.test_case "quits with timer" `Quick loop_quits_with_timer;
+          Alcotest.test_case "quits with keys" `Quick loop_quits_with_keys;
           Alcotest.test_case "dynamic sub stops" `Quick dynamic_sub_stops;
         ] );
     ]

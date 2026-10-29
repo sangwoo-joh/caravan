@@ -71,14 +71,18 @@ let run_app ~render ~on_quit app =
              reconcile !model;
              Cmd.run init_cmd ~dispatch ~on_quit:request_quit;
              let rec loop () =
-               if !stop then on_quit ()
+               if !stop then begin
+                 Hashtbl.iter (fun _ addr -> Troupe.stop addr) registry;
+                 Hashtbl.clear registry;
+                 on_quit ()
+               end
                else begin
                  let msg = Troupe.receive self () in
                  let model', cmd = app.update msg !model in
                  model := model';
                  render (app.view model');
                  Cmd.run cmd ~dispatch ~on_quit:request_quit;
-                 reconcile model';
+                 if not !stop then reconcile model';
                  loop ()
                end
              in
