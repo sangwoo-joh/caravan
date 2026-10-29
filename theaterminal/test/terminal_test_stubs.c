@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/ioctl.h>
 #include <caml/alloc.h>
 #include <caml/memory.h>
 #include <caml/unixsupport.h>
@@ -31,4 +32,14 @@ CAMLprim value theaterminal_test_open_pty(value unit)
   Store_field(pair, 0, Val_int(master));
   Store_field(pair, 1, Val_int(slave));
   CAMLreturn(pair);
+}
+
+CAMLprim value theaterminal_test_set_size(value fd, value rows, value columns)
+{
+  struct winsize dimensions = {0};
+  dimensions.ws_row = Int_val(rows);
+  dimensions.ws_col = Int_val(columns);
+  if (ioctl(Int_val(fd), TIOCSWINSZ, &dimensions) == -1)
+    uerror("TIOCSWINSZ", Nothing);
+  return Val_unit;
 }

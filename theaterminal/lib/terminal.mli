@@ -13,8 +13,8 @@ val release : unit -> unit
 
 val size : unit -> int * int
 (** [size ()] is the terminal's [(rows, columns)], queried once during {!setup}
-    (falls back to [(24, 80)] if the terminal does not answer). Not refreshed on
-    resize. *)
+    from the output terminal without reading input. Falls back to [(24, 80)]
+    if the size is unavailable. Not refreshed on resize. *)
 
 val render : string -> unit
 (** [render frame] redraws [frame] from the top-left, overwriting the previous

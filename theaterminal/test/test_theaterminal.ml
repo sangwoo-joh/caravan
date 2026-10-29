@@ -224,12 +224,16 @@ let keys_refresh_callback () =
 external open_pty : unit -> Unix.file_descr * Unix.file_descr
   = "theaterminal_test_open_pty"
 
+external set_terminal_size : Unix.file_descr -> int -> int -> unit
+  = "theaterminal_test_set_size"
+
 let with_terminal f =
   let master, slave = open_pty () in
   let saved_in = Unix.dup Unix.stdin and saved_out = Unix.dup Unix.stdout in
   flush stdout;
   Fun.protect
     ~finally:(fun () ->
+      Terminal.release ();
       flush stdout;
       Unix.dup2 saved_in Unix.stdin;
       Unix.dup2 saved_out Unix.stdout;
@@ -305,12 +309,34 @@ let keys_batch () =
   Alcotest.(check (list string)) "all handlers and timer run"
     [ "first"; "second"; "timer" ] (List.rev !values)
 
+let terminal_size_preserves_input () =
+  with_terminal (fun master ->
+      set_terminal_size master 42 120;
+      ignore (Unix.write_substring master "q" 0 1);
+      with_timeout (fun () -> Terminal.setup ());
+      Alcotest.(check (pair int int)) "actual terminal size" (42, 120)
+        (Terminal.size ());
+      let ready, _, _ = Unix.select [ Unix.stdin ] [] [] 0.1 in
+      Alcotest.(check bool) "queued key is still readable" true (ready <> []);
+      let buf = Bytes.create 1 in
+      let n = Unix.read Unix.stdin buf 0 1 in
+      Alcotest.(check string) "queued key is preserved" "q" (Bytes.sub_string buf 0 n))
+
+let terminal_size_fallback () =
+  with_terminal (fun master ->
+      set_terminal_size master 0 0;
+      Terminal.setup ();
+      Alcotest.(check (pair int int)) "unknown terminal size" (24, 80)
+        (Terminal.size ()))
+
 let () =
   Alcotest.run "theaterminal"
     [
       ("event", [ Alcotest.test_case "parse" `Quick parse_cases;
                   Alcotest.test_case "unknown sequences" `Quick parse_unknown_sequences ]);
-      ("terminal", [ Alcotest.test_case "restores" `Quick terminal_restores ]);
+      ("terminal", [ Alcotest.test_case "restores" `Quick terminal_restores;
+                     Alcotest.test_case "size preserves input" `Quick terminal_size_preserves_input;
+                     Alcotest.test_case "size fallback" `Quick terminal_size_fallback ]);
       ("cmd", [ Alcotest.test_case "run" `Quick cmd_run ]);
       ("sub", [ Alcotest.test_case "leaves" `Quick sub_leaves;
                 Alcotest.test_case "distinct keys" `Quick sub_distinct_keys ]);

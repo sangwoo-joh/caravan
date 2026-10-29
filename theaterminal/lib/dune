@@ -1,4 +1,7 @@
 (library
  (public_name theaterminal)
  (name theaterminal)
- (libraries troupe unix))
+ (libraries troupe unix)
+ (foreign_stubs
+  (language c)
+  (names terminal_stubs)))
