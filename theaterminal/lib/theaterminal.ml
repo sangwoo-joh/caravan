@@ -13,22 +13,26 @@ type ('model, 'msg) app = {
 type 'msg source =
   | Keys of (Event.key -> 'msg option) list
   | Every of float * (unit -> 'msg)
+  | Worker :
+      ('request Troupe.self -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
+      -> 'msg source
 
 let sources subscriptions =
   let leaves = Sub.leaves subscriptions in
   let keys =
     List.filter_map
-      (function _, Sub.Keys f -> Some f | _, Sub.Every _ -> None)
+      (function _, Sub.Keys f -> Some f | _, (Sub.Every _ | Sub.Worker _) -> None)
       leaves
   in
-  let timers =
+  let workers =
     List.filter_map
       (function
         | key, Sub.Every (seconds, f) -> Some (key, Every (seconds, f))
+        | key, Sub.Worker (run, on_stop) -> Some (key, Worker (run, on_stop))
         | _, Sub.Keys _ -> None)
       leaves
   in
-  match keys with [] -> timers | _ -> ("keys", Keys keys) :: timers
+  match keys with [] -> workers | _ -> ("keys", Keys keys) :: workers
 
 (* One actor per subscription source, each feeding [runtime]'s mailbox. *)
 let spawn_source source ~runtime =
@@ -53,9 +57,9 @@ let spawn_source source ~runtime =
           in
           loop ())
     in
-    (actor, function
+    ((fun () -> Troupe.stop actor), ignore, function
       | Keys f -> callback := f; true
-      | Every _ -> false)
+      | Every _ | Worker _ -> false)
   | Every (seconds, f) ->
     let callback = ref f in
     let actor =
@@ -67,13 +71,31 @@ let spawn_source source ~runtime =
           in
           loop ())
     in
-    (actor, function
+    ((fun () -> Troupe.stop actor), ignore, function
       | Every (interval, f) when interval = seconds -> callback := f; true
       | _ -> false)
+  | Worker (run, on_stop) ->
+    let stopped = ref false in
+    let cleanup () =
+      if not !stopped then begin
+        stopped := true;
+        on_stop ()
+      end
+    in
+    let actor =
+      Troupe.cast (fun self ->
+          Fun.protect ~finally:cleanup (fun () ->
+              run self ~dispatch:(Troupe.send runtime)))
+    in
+    ((fun () -> Troupe.stop actor; cleanup ()), cleanup,
+     function Worker _ -> true | _ -> false)
 
 let run_app ~render ~on_quit app =
   let init_model, init_cmd = app.init in
-  Troupe.run (fun () ->
+  let registry = Hashtbl.create 8 in
+  Fun.protect
+    ~finally:(fun () -> Hashtbl.iter (fun _ (_, cleanup, _) -> cleanup ()) registry)
+    (fun () -> Troupe.run (fun () ->
       ignore
         (Troupe.cast (fun self ->
              let runtime = Troupe.address self in
@@ -82,12 +104,11 @@ let run_app ~render ~on_quit app =
              let request_quit () = stop := true in
              (* Diff the desired subscriptions against the running ones: stop the
                 sources whose key disappeared, start the ones that appeared. *)
-             let registry = Hashtbl.create 8 in
              let reconcile model =
                let wanted = sources (app.subscriptions model) in
                let keep key = List.mem_assoc key wanted in
                Hashtbl.iter
-                 (fun key (addr, _) -> if not (keep key) then Troupe.stop addr)
+                 (fun key (cancel, _, _) -> if not (keep key) then cancel ())
                  registry;
                Hashtbl.filter_map_inplace
                  (fun key addr -> if keep key then Some addr else None)
@@ -95,9 +116,9 @@ let run_app ~render ~on_quit app =
                List.iter
                  (fun (key, source) ->
                    match Hashtbl.find_opt registry key with
-                   | Some (_, refresh) when refresh source -> ()
+                   | Some (_, _, refresh) when refresh source -> ()
                    | existing ->
-                     Option.iter (fun (addr, _) -> Troupe.stop addr) existing;
+                     Option.iter (fun (cancel, _, _) -> cancel ()) existing;
                      Hashtbl.replace registry key (spawn_source source ~runtime))
                  wanted
              in
@@ -107,7 +128,7 @@ let run_app ~render ~on_quit app =
              Cmd.run init_cmd ~dispatch ~on_quit:request_quit;
              let rec loop () =
                if !stop then begin
-                 Hashtbl.iter (fun _ (addr, _) -> Troupe.stop addr) registry;
+                 Hashtbl.iter (fun _ (cancel, _, _) -> cancel ()) registry;
                  Hashtbl.clear registry;
                  on_quit ()
                end
@@ -121,7 +142,7 @@ let run_app ~render ~on_quit app =
                  loop ()
                end
              in
-             loop ())))
+             loop ()))))
 
 let run app =
   Fun.protect ~finally:Terminal.release (fun () ->

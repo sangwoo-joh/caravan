@@ -12,6 +12,12 @@ val msg : 'msg -> 'msg t
 val quit : 'msg t
 (** Stop the program. *)
 
+val send : 'request Troupe.Address.t -> 'request -> 'msg t
+(** [send address request] is a command delivering [request] to [address]
+    without waiting for a reply. The recipient can send results through a
+    worker's [dispatch] callback. Requests to stopped actors are discarded.
+    This command must be interpreted within a Troupe scheduler. *)
+
 val batch : 'msg t list -> 'msg t
 (** Run several commands, left to right. *)
 

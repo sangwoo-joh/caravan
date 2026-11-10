@@ -329,6 +329,148 @@ let terminal_size_fallback () =
       Alcotest.(check (pair int int)) "unknown terminal size" (24, 80)
         (Terminal.size ()))
 
+let worker_lifecycle () =
+  List.iter
+    (fun mode ->
+      let started = ref 0 and cleaned = ref 0 and replacement = ref 0 in
+      let worker =
+        Sub.worker ~key:"worker" ~on_stop:(fun () -> incr cleaned)
+          (fun _ ~dispatch ->
+            incr started;
+            if mode = "worker exception" then failwith "worker failed";
+            dispatch ();
+            if mode <> "return" then Troupe.sleep 10.)
+      in
+      let app =
+        {
+          init = (0, if mode = "immediate quit" then Cmd.quit else Cmd.none);
+          update = (fun () n ->
+              if mode = "update exception" then failwith "update failed";
+              (n + 1, if mode = "quit" then Cmd.quit else Cmd.none));
+          view = (fun n ->
+              if n > 0 && mode = "render exception" then failwith "render failed";
+              string_of_int n);
+          subscriptions = (fun n ->
+              if n = 0 then worker
+              else if mode = "remove" then Sub.none
+              else if mode = "replace" then
+                Sub.worker ~key:"replacement" ~on_stop:(fun () -> incr replacement)
+                  (fun _ ~dispatch:_ -> ())
+              else
+                Sub.worker ~key:"worker" ~on_stop:(fun () -> incr replacement)
+                  (fun _ ~dispatch:_ -> incr replacement));
+        }
+      in
+      with_timeout (fun () ->
+          match mode with
+          | "worker exception" ->
+            Alcotest.check_raises mode (Failure "worker failed")
+              (fun () -> run_headless ~render:ignore app)
+          | "render exception" ->
+            Alcotest.check_raises mode (Failure "render failed")
+              (fun () -> run_headless ~render:ignore app)
+          | "update exception" ->
+            Alcotest.check_raises mode (Failure "update failed")
+              (fun () -> run_headless ~render:ignore app)
+          | _ -> run_headless ~render:ignore app);
+      Alcotest.(check int) (mode ^ " starts once")
+        (if mode = "immediate quit" then 0 else 1) !started;
+      Alcotest.(check int) (mode ^ " cleans once") 1 !cleaned;
+      Alcotest.(check int) (mode ^ " preserves callbacks")
+        (if mode = "replace" then 1 else 0) !replacement)
+    [ "return"; "remove"; "replace"; "quit"; "immediate quit";
+      "worker exception"; "update exception"; "render exception" ]
+
+let worker_wait_cleanup () =
+  let reader, writer = Unix.pipe () in
+  let cleaned = ref 0 in
+  Fun.protect ~finally:(fun () -> Unix.close writer) (fun () ->
+      with_timeout (fun () ->
+          run_headless ~render:ignore
+            {
+              init = ((), Cmd.none);
+              update = (fun () () -> ((), Cmd.quit));
+              view = (fun () -> "");
+              subscriptions = (fun () -> Sub.batch
+                  [ Sub.worker ~key:"pipe"
+                      ~on_stop:(fun () -> incr cleaned; Unix.close reader)
+                      (fun _ ~dispatch:_ -> Troupe.await_readable reader);
+                    Sub.every 0.001 (fun () -> ()) ]);
+            }));
+  Alcotest.(check int) "blocked reader cleaned once" 1 !cleaned
+
+type engine_msg =
+  | Ready of string Troupe.Address.t
+  | Reply of string
+  | Tick
+
+let worker_process_roundtrip () =
+  let process = ref None in
+  let cleaned = ref 0 and ticks = ref 0 and replies = ref [] in
+  let cleanup () =
+    incr cleaned;
+    match !process with
+    | None -> ()
+    | Some (pid, input, output) ->
+      process := None;
+      Unix.close input;
+      Unix.close output;
+      (try Unix.kill pid Sys.sigkill with Unix.Unix_error (Unix.ESRCH, _, _) -> ());
+      ignore (Unix.waitpid [] pid)
+  in
+  let worker =
+    Sub.worker ~key:"engine" ~on_stop:cleanup (fun self ~dispatch ->
+        let child_input, input = Unix.pipe ~cloexec:true () in
+        let output, child_output = Unix.pipe ~cloexec:true () in
+        let pid =
+          Fun.protect
+            ~finally:(fun () -> Unix.close child_input; Unix.close child_output)
+            (fun () -> Unix.create_process "/bin/sh"
+                [| "sh"; "-c";
+                   "while IFS= read -r line; do sleep 0.03; printf '%s\\n' \"$line\"; done" |]
+                child_input child_output Unix.stderr)
+        in
+        process := Some (pid, input, output);
+        dispatch (Ready (Troupe.address self));
+        let buf = Bytes.create 1 in
+        let rec loop () =
+          let request = Troupe.receive self () ^ "\n" in
+          ignore (Unix.write_substring input request 0 (String.length request));
+          let reply = Buffer.create 32 in
+          let rec read_line () =
+            Troupe.await_readable output;
+            match Unix.read output buf 0 1 with
+            | 0 -> failwith "unexpected engine EOF"
+            | _ when Bytes.get buf 0 = '\n' -> Buffer.contents reply
+            | _ -> Buffer.add_char reply (Bytes.get buf 0); read_line ()
+          in
+          dispatch (Reply (read_line ()));
+          loop ()
+        in
+        loop ())
+  in
+  with_timeout (fun () ->
+      run_headless ~render:ignore
+        {
+          init = ((), Cmd.none);
+          update = (fun msg () ->
+              match msg with
+              | Ready address ->
+                ((), Cmd.batch [ Cmd.send address "uci"; Cmd.send address "isready" ])
+              | Tick -> incr ticks; ((), Cmd.none)
+              | Reply reply ->
+                replies := reply :: !replies;
+                ((), if List.length !replies = 2 then Cmd.quit else Cmd.none));
+          view = (fun () -> "");
+          subscriptions = (fun () -> Sub.batch
+              [ worker; Sub.every 0.001 (fun () -> Tick) ]);
+        });
+  Alcotest.(check (list string)) "ordered process replies" [ "uci"; "isready" ]
+    (List.rev !replies);
+  Alcotest.(check bool) "app ticks while waiting for process" true (!ticks > 0);
+  Alcotest.(check int) "process cleaned once" 1 !cleaned;
+  Alcotest.(check bool) "process released" true (!process = None)
+
 let () =
   Alcotest.run "theaterminal"
     [
@@ -352,5 +494,8 @@ let () =
           Alcotest.test_case "timer keeps deadline" `Quick timer_keeps_deadline;
           Alcotest.test_case "keys callback refresh" `Quick keys_refresh_callback;
           Alcotest.test_case "keys batch" `Quick keys_batch;
+          Alcotest.test_case "worker lifecycle" `Quick worker_lifecycle;
+          Alcotest.test_case "worker readable cancellation" `Quick worker_wait_cleanup;
+          Alcotest.test_case "worker process roundtrip" `Quick worker_process_roundtrip;
         ] );
     ]
