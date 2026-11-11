@@ -31,3 +31,7 @@ setup.log
 
 # Local OPAM switch
 _opam/
+
+# Downloaded Stockfish engine
+/caravan/bin/stockfish/
+/caravan/bin/.stockfish-download.*/
