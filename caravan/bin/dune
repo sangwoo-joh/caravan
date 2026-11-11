@@ -2,4 +2,4 @@
  (name main)
  (public_name caravan)
  (package caravan)
- (libraries theaterminal))
+ (libraries caravan_ui theaterminal))

@@ -1,0 +1,3 @@
+(library
+ (name caravan_ui)
+ (libraries theaterminal))

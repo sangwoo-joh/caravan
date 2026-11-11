@@ -43,4 +43,5 @@
  (depends
   (ocaml (>= 5.1))
   dune
-  theaterminal))
+  theaterminal
+  (alcotest :with-test)))
