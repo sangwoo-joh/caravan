@@ -9,8 +9,7 @@ let take t p =
   let rec find i next =
     match next () with
     | Seq.Nil -> None
-    | Seq.Cons (x, rest) ->
-      if p x then Some (i, x) else find (i + 1) rest
+    | Seq.Cons (x, rest) -> if p x then Some (i, x) else find (i + 1) rest
   in
   match find 0 (Queue.to_seq t) with
   | None -> None
@@ -20,3 +19,4 @@ let take t p =
       if i <> selected then Queue.push msg t
     done;
     Some x
+;;

@@ -20,12 +20,13 @@ let every ?key seconds f =
     | None -> Printf.sprintf "every:interval:%.17g" seconds
   in
   Leaf (key, Every (seconds, f))
+;;
 
 let worker ~key ~on_stop run = Leaf ("worker:" ^ key, Worker (run, on_stop))
-
 let batch subs = Batch subs
 
 let rec leaves = function
   | None -> []
-  | Leaf (key, source) -> [ (key, source) ]
+  | Leaf (key, source) -> [ key, source ]
   | Batch subs -> List.concat_map leaves subs
+;;

@@ -18,19 +18,29 @@ let parse_cases () =
   check "\x1b[D" [ Event.Left ];
   check "\x1b" [ Event.Escape ];
   check "\x1b[Aq" [ Event.Up; Event.Char 'q' ]
+;;
 
 let parse_unknown_sequences () =
   List.iter
     (fun sequence ->
-      Alcotest.(check (list key)) "whole sequence remains unknown"
-        [ Event.Unknown sequence; Event.Char 'q' ] (Event.parse (sequence ^ "q")))
+       Alcotest.(check (list key))
+         "whole sequence remains unknown"
+         [ Event.Unknown sequence; Event.Char 'q' ]
+         (Event.parse (sequence ^ "q")))
     [ "\x1b[3~"; "\x1b[15~"; "\x1b[1;5A"; "\x1b[?25h"; "\x1b[1 q" ];
-  Alcotest.(check (list key)) "adjacent sequences"
-    [ Event.Unknown "\x1b[3~"; Event.Up ] (Event.parse "\x1b[3~\x1b[A");
-  Alcotest.(check (list key)) "incomplete sequence"
-    [ Event.Unknown "\x1b[15" ] (Event.parse "\x1b[15");
-  Alcotest.(check (list key)) "invalid byte remains available"
-    [ Event.Unknown "\x1b["; Event.Enter ] (Event.parse "\x1b[\n")
+  Alcotest.(check (list key))
+    "adjacent sequences"
+    [ Event.Unknown "\x1b[3~"; Event.Up ]
+    (Event.parse "\x1b[3~\x1b[A");
+  Alcotest.(check (list key))
+    "incomplete sequence"
+    [ Event.Unknown "\x1b[15" ]
+    (Event.parse "\x1b[15");
+  Alcotest.(check (list key))
+    "invalid byte remains available"
+    [ Event.Unknown "\x1b["; Event.Enter ]
+    (Event.parse "\x1b[\n")
+;;
 
 let cmd_run () =
   let dispatched = ref [] in
@@ -39,45 +49,56 @@ let cmd_run () =
     (Cmd.batch [ Cmd.msg 1; Cmd.msg 2; Cmd.quit ])
     ~dispatch:(fun m -> dispatched := m :: !dispatched)
     ~on_quit:(fun () -> quit := true);
-  Alcotest.(check (list int)) "dispatched in order" [ 1; 2 ] (List.rev !dispatched);
+  Alcotest.(check (list int))
+    "dispatched in order"
+    [ 1; 2 ]
+    (List.rev !dispatched);
   Alcotest.(check bool) "quit requested" true !quit
+;;
 
 let sub_leaves () =
   let keys =
-    List.map fst
+    List.map
+      fst
       (Sub.leaves
          (Sub.batch
-            [ Sub.keys (fun _ -> None); Sub.every ~key:"clock" 0.5 (fun () -> ()) ]))
+            [ Sub.keys (fun _ -> None)
+            ; Sub.every ~key:"clock" 0.5 (fun () -> ())
+            ]))
   in
-  Alcotest.(check (list string)) "keyed leaves in order" [ "keys"; "every:key:clock" ] keys
+  Alcotest.(check (list string))
+    "keyed leaves in order"
+    [ "keys"; "every:key:clock" ]
+    keys
+;;
 
 (* A counter app: [init] dispatches three increments, then the loop settles. *)
 let loop_counts () =
   let app =
-    {
-      init = (0, Cmd.batch [ Cmd.msg (); Cmd.msg (); Cmd.msg () ]);
-      update = (fun () n -> (n + 1, Cmd.none));
-      view = string_of_int;
-      subscriptions = (fun _ -> Sub.none);
+    { init = 0, Cmd.batch [ Cmd.msg (); Cmd.msg (); Cmd.msg () ]
+    ; update = (fun () n -> n + 1, Cmd.none)
+    ; view = string_of_int
+    ; subscriptions = (fun _ -> Sub.none)
     }
   in
   let frames = ref [] in
   run_headless ~render:(fun s -> frames := s :: !frames) app;
   Alcotest.(check string) "last frame after 3 increments" "3" (List.hd !frames)
+;;
 
 (* A quit command must stop the loop and let [run_headless] return. *)
 let loop_quits () =
   let app =
-    {
-      init = (0, Cmd.msg ());
-      update = (fun () n -> (n + 1, Cmd.quit));
-      view = string_of_int;
-      subscriptions = (fun _ -> Sub.none);
+    { init = 0, Cmd.msg ()
+    ; update = (fun () n -> n + 1, Cmd.quit)
+    ; view = string_of_int
+    ; subscriptions = (fun _ -> Sub.none)
     }
   in
   let frames = ref [] in
   run_headless ~render:(fun s -> frames := s :: !frames) app;
   Alcotest.(check string) "rendered once before quit" "1" (List.hd !frames)
+;;
 
 (* A timer subscription is active only while the model is below 3. Once the
    model reaches 3 the subscription is dropped, the timer actor is stopped, and
@@ -85,48 +106,55 @@ let loop_quits () =
    the timer was *not* stopped (a regression), preventing an infinite run. *)
 let dynamic_sub_stops () =
   let app =
-    {
-      init = (0, Cmd.none);
-      update =
-        (fun () n -> if n >= 8 then (n, Cmd.quit) else (n + 1, Cmd.none));
-      view = string_of_int;
-      subscriptions =
+    { init = 0, Cmd.none
+    ; update = (fun () n -> if n >= 8 then n, Cmd.quit else n + 1, Cmd.none)
+    ; view = string_of_int
+    ; subscriptions =
         (fun n ->
-          if n < 3 then Sub.every ~key:"t" 0.01 (fun () -> ()) else Sub.none);
+          if n < 3 then Sub.every ~key:"t" 0.01 (fun () -> ()) else Sub.none)
     }
   in
   let frames = ref [] in
   run_headless ~render:(fun s -> frames := s :: !frames) app;
-  Alcotest.(check string) "settled at 3 after timer stopped" "3" (List.hd !frames)
+  Alcotest.(check string)
+    "settled at 3 after timer stopped"
+    "3"
+    (List.hd !frames)
+;;
 
 let with_timeout f =
   let previous =
-    Sys.signal Sys.sigalrm (Sys.Signal_handle (fun _ -> failwith "test timed out"))
+    Sys.signal
+      Sys.sigalrm
+      (Sys.Signal_handle (fun _ -> failwith "test timed out"))
   in
   Fun.protect
     ~finally:(fun () ->
       ignore (Unix.alarm 0);
       Sys.set_signal Sys.sigalrm previous)
     (fun () ->
-      ignore (Unix.alarm 2);
-      f ())
+       ignore (Unix.alarm 2);
+       f ())
+;;
 
 let loop_quits_with_timer () =
   List.iter
     (fun immediately ->
-      let ticks = ref 0 in
-      with_timeout (fun () ->
-          run_headless ~render:ignore
-            {
-              init = ((), if immediately then Cmd.quit else Cmd.none);
-              update = (fun () () -> ((), Cmd.quit));
-              view = (fun () -> "");
-              subscriptions =
-                (fun () -> Sub.every 0.001 (fun () -> incr ticks));
-            });
-      Alcotest.(check int) "timer stops at quit" (if immediately then 0 else 1)
-        !ticks)
+       let ticks = ref 0 in
+       with_timeout (fun () ->
+         run_headless
+           ~render:ignore
+           { init = ((), if immediately then Cmd.quit else Cmd.none)
+           ; update = (fun () () -> (), Cmd.quit)
+           ; view = (fun () -> "")
+           ; subscriptions = (fun () -> Sub.every 0.001 (fun () -> incr ticks))
+           });
+       Alcotest.(check int)
+         "timer stops at quit"
+         (if immediately then 0 else 1)
+         !ticks)
     [ true; false ]
+;;
 
 let loop_quits_with_keys () =
   let saved = Unix.dup Unix.stdin in
@@ -136,66 +164,82 @@ let loop_quits_with_keys () =
       Unix.dup2 saved Unix.stdin;
       List.iter Unix.close [ saved; reader; writer ])
     (fun () ->
-      Unix.dup2 reader Unix.stdin;
-      with_timeout (fun () ->
-          run_headless ~render:ignore
-            {
-              init = ((), Cmd.none);
-              update = (fun () () -> ((), Cmd.quit));
-              view = (fun () -> "");
-              subscriptions =
-                (fun () ->
-                  Sub.batch
-                    [ Sub.keys (fun _ -> None); Sub.every 0.001 (fun () -> ()) ]);
-            }))
+       Unix.dup2 reader Unix.stdin;
+       with_timeout (fun () ->
+         run_headless
+           ~render:ignore
+           { init = (), Cmd.none
+           ; update = (fun () () -> (), Cmd.quit)
+           ; view = (fun () -> "")
+           ; subscriptions =
+               (fun () ->
+                 Sub.batch
+                   [ Sub.keys (fun _ -> None); Sub.every 0.001 (fun () -> ()) ])
+           }))
+;;
 
 let timer_refreshes_callback () =
   let values = ref [] in
   with_timeout (fun () ->
-      run_headless ~render:ignore
-        {
-          init = (0, Cmd.none);
-          update = (fun captured n -> values := captured :: !values; (n + 1, Cmd.none));
-          view = string_of_int;
-          subscriptions =
-            (fun n ->
-              if n < 2 then Sub.every ~key:"clock" 0.001 (fun () -> n)
-              else Sub.none);
-        });
+    run_headless
+      ~render:ignore
+      { init = 0, Cmd.none
+      ; update =
+          (fun captured n ->
+            values := captured :: !values;
+            n + 1, Cmd.none)
+      ; view = string_of_int
+      ; subscriptions =
+          (fun n ->
+            if n < 2
+            then Sub.every ~key:"clock" 0.001 (fun () -> n)
+            else Sub.none)
+      });
   Alcotest.(check (list int)) "latest model" [ 0; 1 ] (List.rev !values)
+;;
 
 let timer_refreshes_interval () =
   let times = ref [] in
   with_timeout (fun () ->
-      run_headless ~render:ignore
-        {
-          init = (0, Cmd.none);
-          update =
-            (fun () n -> times := Unix.gettimeofday () :: !times; (n + 1, Cmd.none));
-          view = string_of_int;
-          subscriptions =
-            (fun n ->
-              if n < 2 then
-                Sub.every ~key:"clock" (if n = 0 then 0.001 else 0.05) (fun () -> ())
-              else Sub.none);
-        });
+    run_headless
+      ~render:ignore
+      { init = 0, Cmd.none
+      ; update =
+          (fun () n ->
+            times := Unix.gettimeofday () :: !times;
+            n + 1, Cmd.none)
+      ; view = string_of_int
+      ; subscriptions =
+          (fun n ->
+            if n < 2
+            then
+              Sub.every
+                ~key:"clock"
+                (if n = 0 then 0.001 else 0.05)
+                (fun () -> ())
+            else Sub.none)
+      });
   match !times with
   | [ second; first ] ->
     Alcotest.(check bool) "new interval is used" true (second -. first >= 0.05)
   | _ -> Alcotest.fail "expected two timer ticks"
+;;
 
 let timer_keeps_deadline () =
   with_timeout (fun () ->
-      run_headless ~render:ignore
-        {
-          init = ((), Cmd.none);
-          update = (fun quit () -> ((), if quit then Cmd.quit else Cmd.none));
-          view = (fun () -> "");
-          subscriptions =
-            (fun () -> Sub.batch
-                [ Sub.every ~key:"fast" 0.001 (fun () -> false);
-                  Sub.every ~key:"slow" 0.02 (fun () -> true) ]);
-        })
+    run_headless
+      ~render:ignore
+      { init = (), Cmd.none
+      ; update = (fun quit () -> (), if quit then Cmd.quit else Cmd.none)
+      ; view = (fun () -> "")
+      ; subscriptions =
+          (fun () ->
+            Sub.batch
+              [ Sub.every ~key:"fast" 0.001 (fun () -> false)
+              ; Sub.every ~key:"slow" 0.02 (fun () -> true)
+              ])
+      })
+;;
 
 let keys_refresh_callback () =
   let saved = Unix.dup Unix.stdin in
@@ -206,30 +250,39 @@ let keys_refresh_callback () =
       Unix.dup2 saved Unix.stdin;
       List.iter Unix.close [ saved; reader; writer ])
     (fun () ->
-      Unix.dup2 reader Unix.stdin;
-      ignore (Unix.write_substring writer "a" 0 1);
-      with_timeout (fun () ->
-          run_headless ~render:ignore
-            {
-              init = (0, Cmd.none);
-              update = (fun captured n ->
-                  values := captured :: !values;
-                  if n = 0 then ignore (Unix.write_substring writer "b" 0 1);
-                  (n + 1, if n = 1 then Cmd.quit else Cmd.none));
-              view = string_of_int;
-              subscriptions = (fun n -> Sub.keys (fun _ -> Some n));
-            }));
+       Unix.dup2 reader Unix.stdin;
+       ignore (Unix.write_substring writer "a" 0 1);
+       with_timeout (fun () ->
+         run_headless
+           ~render:ignore
+           { init = 0, Cmd.none
+           ; update =
+               (fun captured n ->
+                 values := captured :: !values;
+                 if n = 0 then ignore (Unix.write_substring writer "b" 0 1);
+                 n + 1, if n = 1 then Cmd.quit else Cmd.none)
+           ; view = string_of_int
+           ; subscriptions = (fun n -> Sub.keys (fun _ -> Some n))
+           }));
   Alcotest.(check (list int)) "latest key handler" [ 0; 1 ] (List.rev !values)
+;;
 
-external open_pty : unit -> Unix.file_descr * Unix.file_descr
+external open_pty
+  :  unit
+  -> Unix.file_descr * Unix.file_descr
   = "theaterminal_test_open_pty"
 
-external set_terminal_size : Unix.file_descr -> int -> int -> unit
+external set_terminal_size
+  :  Unix.file_descr
+  -> int
+  -> int
+  -> unit
   = "theaterminal_test_set_size"
 
 let with_terminal f =
   let master, slave = open_pty () in
-  let saved_in = Unix.dup Unix.stdin and saved_out = Unix.dup Unix.stdout in
+  let saved_in = Unix.dup Unix.stdin
+  and saved_out = Unix.dup Unix.stdout in
   flush stdout;
   Fun.protect
     ~finally:(fun () ->
@@ -239,48 +292,61 @@ let with_terminal f =
       Unix.dup2 saved_out Unix.stdout;
       List.iter Unix.close [ master; slave; saved_in; saved_out ])
     (fun () ->
-      Unix.dup2 slave Unix.stdin;
-      Unix.dup2 slave Unix.stdout;
-      f master)
+       Unix.dup2 slave Unix.stdin;
+       Unix.dup2 slave Unix.stdout;
+       f master)
+;;
 
 let terminal_restores () =
   List.iter
     (fun fail ->
-      with_terminal (fun _ ->
-          let before = Unix.tcgetattr Unix.stdin in
-          let app =
-            {
-              init = ((), Cmd.none);
-              update = (fun () () -> ((), Cmd.none));
-              view = (fun () -> if fail then failwith "view failed" else "frame");
-              subscriptions = (fun () -> Sub.none);
-            }
-          in
-          if fail then
-            Alcotest.check_raises "view exception propagates" (Failure "view failed")
-              (fun () -> run app)
-          else run app;
-          let after = Unix.tcgetattr Unix.stdin in
-          Alcotest.(check bool) "terminal attributes restored" true (before = after);
-          let changed = { before with c_echo = not before.c_echo } in
-          Unix.tcsetattr Unix.stdin Unix.TCSANOW changed;
-          Terminal.release ();
-          Alcotest.(check bool) "release does not restore twice" true
-            (changed = Unix.tcgetattr Unix.stdin)))
+       with_terminal (fun _ ->
+         let before = Unix.tcgetattr Unix.stdin in
+         let app =
+           { init = (), Cmd.none
+           ; update = (fun () () -> (), Cmd.none)
+           ; view = (fun () -> if fail then failwith "view failed" else "frame")
+           ; subscriptions = (fun () -> Sub.none)
+           }
+         in
+         if fail
+         then
+           Alcotest.check_raises
+             "view exception propagates"
+             (Failure "view failed")
+             (fun () -> run app)
+         else run app;
+         let after = Unix.tcgetattr Unix.stdin in
+         Alcotest.(check bool)
+           "terminal attributes restored"
+           true
+           (before = after);
+         let changed = { before with c_echo = not before.c_echo } in
+         Unix.tcsetattr Unix.stdin Unix.TCSANOW changed;
+         Terminal.release ();
+         Alcotest.(check bool)
+           "release does not restore twice"
+           true
+           (changed = Unix.tcgetattr Unix.stdin)))
     [ false; true ]
+;;
 
 let sub_distinct_keys () =
   let leaves =
     Sub.leaves
       (Sub.batch
-         [ Sub.keys (fun _ -> None);
-           Sub.every ~key:"keys" 1. (fun () -> ());
-           Sub.every 1.0000001 (fun () -> ());
-           Sub.every 1.0000002 (fun () -> ());
-           Sub.every ~key:"interval:1.0000001" 1. (fun () -> ()) ])
+         [ Sub.keys (fun _ -> None)
+         ; Sub.every ~key:"keys" 1. (fun () -> ())
+         ; Sub.every 1.0000001 (fun () -> ())
+         ; Sub.every 1.0000002 (fun () -> ())
+         ; Sub.every ~key:"interval:1.0000001" 1. (fun () -> ())
+         ])
   in
-  Alcotest.(check int) "all identities are distinct" 5
+  Alcotest.(check int)
+    "all identities are distinct"
+    5
     (List.length (List.sort_uniq String.compare (List.map fst leaves)))
+;;
 
 let keys_batch () =
   let saved = Unix.dup Unix.stdin in
@@ -291,113 +357,164 @@ let keys_batch () =
       Unix.dup2 saved Unix.stdin;
       List.iter Unix.close [ saved; reader; writer ])
     (fun () ->
-      Unix.dup2 reader Unix.stdin;
-      ignore (Unix.write_substring writer "x" 0 1);
-      with_timeout (fun () ->
-          run_headless ~render:ignore
-            {
-              init = (0, Cmd.none);
-              update = (fun value n ->
-                  values := value :: !values;
-                  (n + 1, if n = 2 then Cmd.quit else Cmd.none));
-              view = string_of_int;
-              subscriptions = (fun _ -> Sub.batch
-                  [ Sub.keys (fun _ -> Some "first");
-                    Sub.batch [ Sub.keys (fun _ -> Some "second") ];
-                    Sub.every ~key:"keys" 0.01 (fun () -> "timer") ]);
-            }));
-  Alcotest.(check (list string)) "all handlers and timer run"
-    [ "first"; "second"; "timer" ] (List.rev !values)
+       Unix.dup2 reader Unix.stdin;
+       ignore (Unix.write_substring writer "x" 0 1);
+       with_timeout (fun () ->
+         run_headless
+           ~render:ignore
+           { init = 0, Cmd.none
+           ; update =
+               (fun value n ->
+                 values := value :: !values;
+                 n + 1, if n = 2 then Cmd.quit else Cmd.none)
+           ; view = string_of_int
+           ; subscriptions =
+               (fun _ ->
+                 Sub.batch
+                   [ Sub.keys (fun _ -> Some "first")
+                   ; Sub.batch [ Sub.keys (fun _ -> Some "second") ]
+                   ; Sub.every ~key:"keys" 0.01 (fun () -> "timer")
+                   ])
+           }));
+  Alcotest.(check (list string))
+    "all handlers and timer run"
+    [ "first"; "second"; "timer" ]
+    (List.rev !values)
+;;
 
 let terminal_size_preserves_input () =
   with_terminal (fun master ->
-      set_terminal_size master 42 120;
-      ignore (Unix.write_substring master "q" 0 1);
-      with_timeout (fun () -> Terminal.setup ());
-      Alcotest.(check (pair int int)) "actual terminal size" (42, 120)
-        (Terminal.size ());
-      let ready, _, _ = Unix.select [ Unix.stdin ] [] [] 0.1 in
-      Alcotest.(check bool) "queued key is still readable" true (ready <> []);
-      let buf = Bytes.create 1 in
-      let n = Unix.read Unix.stdin buf 0 1 in
-      Alcotest.(check string) "queued key is preserved" "q" (Bytes.sub_string buf 0 n))
+    set_terminal_size master 42 120;
+    ignore (Unix.write_substring master "q" 0 1);
+    with_timeout (fun () -> Terminal.setup ());
+    Alcotest.(check (pair int int))
+      "actual terminal size"
+      (42, 120)
+      (Terminal.size ());
+    let ready, _, _ = Unix.select [ Unix.stdin ] [] [] 0.1 in
+    Alcotest.(check bool) "queued key is still readable" true (ready <> []);
+    let buf = Bytes.create 1 in
+    let n = Unix.read Unix.stdin buf 0 1 in
+    Alcotest.(check string)
+      "queued key is preserved"
+      "q"
+      (Bytes.sub_string buf 0 n))
+;;
 
 let terminal_size_fallback () =
   with_terminal (fun master ->
-      set_terminal_size master 0 0;
-      Terminal.setup ();
-      Alcotest.(check (pair int int)) "unknown terminal size" (24, 80)
-        (Terminal.size ()))
+    set_terminal_size master 0 0;
+    Terminal.setup ();
+    Alcotest.(check (pair int int))
+      "unknown terminal size"
+      (24, 80)
+      (Terminal.size ()))
+;;
 
 let worker_lifecycle () =
   List.iter
     (fun mode ->
-      let started = ref 0 and cleaned = ref 0 and replacement = ref 0 in
-      let worker =
-        Sub.worker ~key:"worker" ~on_stop:(fun () -> incr cleaned)
-          (fun _ ~dispatch ->
-            incr started;
-            if mode = "worker exception" then failwith "worker failed";
-            dispatch ();
-            if mode <> "return" then Troupe.sleep 10.)
-      in
-      let app =
-        {
-          init = (0, if mode = "immediate quit" then Cmd.quit else Cmd.none);
-          update = (fun () n ->
-              if mode = "update exception" then failwith "update failed";
-              (n + 1, if mode = "quit" then Cmd.quit else Cmd.none));
-          view = (fun n ->
-              if n > 0 && mode = "render exception" then failwith "render failed";
-              string_of_int n);
-          subscriptions = (fun n ->
-              if n = 0 then worker
-              else if mode = "remove" then Sub.none
-              else if mode = "replace" then
-                Sub.worker ~key:"replacement" ~on_stop:(fun () -> incr replacement)
-                  (fun _ ~dispatch:_ -> ())
-              else
-                Sub.worker ~key:"worker" ~on_stop:(fun () -> incr replacement)
-                  (fun _ ~dispatch:_ -> incr replacement));
-        }
-      in
-      with_timeout (fun () ->
-          match mode with
-          | "worker exception" ->
-            Alcotest.check_raises mode (Failure "worker failed")
-              (fun () -> run_headless ~render:ignore app)
-          | "render exception" ->
-            Alcotest.check_raises mode (Failure "render failed")
-              (fun () -> run_headless ~render:ignore app)
-          | "update exception" ->
-            Alcotest.check_raises mode (Failure "update failed")
-              (fun () -> run_headless ~render:ignore app)
-          | _ -> run_headless ~render:ignore app);
-      Alcotest.(check int) (mode ^ " starts once")
-        (if mode = "immediate quit" then 0 else 1) !started;
-      Alcotest.(check int) (mode ^ " cleans once") 1 !cleaned;
-      Alcotest.(check int) (mode ^ " preserves callbacks")
-        (if mode = "replace" then 1 else 0) !replacement)
-    [ "return"; "remove"; "replace"; "quit"; "immediate quit";
-      "worker exception"; "update exception"; "render exception" ]
+       let started = ref 0
+       and cleaned = ref 0
+       and replacement = ref 0 in
+       let worker =
+         Sub.worker
+           ~key:"worker"
+           ~on_stop:(fun () -> incr cleaned)
+           (fun _ ~dispatch ->
+              incr started;
+              if mode = "worker exception" then failwith "worker failed";
+              dispatch ();
+              if mode <> "return" then Troupe.sleep 10.)
+       in
+       let app =
+         { init = (0, if mode = "immediate quit" then Cmd.quit else Cmd.none)
+         ; update =
+             (fun () n ->
+               if mode = "update exception" then failwith "update failed";
+               n + 1, if mode = "quit" then Cmd.quit else Cmd.none)
+         ; view =
+             (fun n ->
+               if n > 0 && mode = "render exception"
+               then failwith "render failed";
+               string_of_int n)
+         ; subscriptions =
+             (fun n ->
+               if n = 0
+               then worker
+               else if mode = "remove"
+               then Sub.none
+               else if mode = "replace"
+               then
+                 Sub.worker
+                   ~key:"replacement"
+                   ~on_stop:(fun () -> incr replacement)
+                   (fun _ ~dispatch:_ -> ())
+               else
+                 Sub.worker
+                   ~key:"worker"
+                   ~on_stop:(fun () -> incr replacement)
+                   (fun _ ~dispatch:_ -> incr replacement))
+         }
+       in
+       with_timeout (fun () ->
+         match mode with
+         | "worker exception" ->
+           Alcotest.check_raises mode (Failure "worker failed") (fun () ->
+             run_headless ~render:ignore app)
+         | "render exception" ->
+           Alcotest.check_raises mode (Failure "render failed") (fun () ->
+             run_headless ~render:ignore app)
+         | "update exception" ->
+           Alcotest.check_raises mode (Failure "update failed") (fun () ->
+             run_headless ~render:ignore app)
+         | _ -> run_headless ~render:ignore app);
+       Alcotest.(check int)
+         (mode ^ " starts once")
+         (if mode = "immediate quit" then 0 else 1)
+         !started;
+       Alcotest.(check int) (mode ^ " cleans once") 1 !cleaned;
+       Alcotest.(check int)
+         (mode ^ " preserves callbacks")
+         (if mode = "replace" then 1 else 0)
+         !replacement)
+    [ "return"
+    ; "remove"
+    ; "replace"
+    ; "quit"
+    ; "immediate quit"
+    ; "worker exception"
+    ; "update exception"
+    ; "render exception"
+    ]
+;;
 
 let worker_wait_cleanup () =
   let reader, writer = Unix.pipe () in
   let cleaned = ref 0 in
-  Fun.protect ~finally:(fun () -> Unix.close writer) (fun () ->
-      with_timeout (fun () ->
-          run_headless ~render:ignore
-            {
-              init = ((), Cmd.none);
-              update = (fun () () -> ((), Cmd.quit));
-              view = (fun () -> "");
-              subscriptions = (fun () -> Sub.batch
-                  [ Sub.worker ~key:"pipe"
-                      ~on_stop:(fun () -> incr cleaned; Unix.close reader)
-                      (fun _ ~dispatch:_ -> Troupe.await_readable reader);
-                    Sub.every 0.001 (fun () -> ()) ]);
-            }));
+  Fun.protect
+    ~finally:(fun () -> Unix.close writer)
+    (fun () ->
+       with_timeout (fun () ->
+         run_headless
+           ~render:ignore
+           { init = (), Cmd.none
+           ; update = (fun () () -> (), Cmd.quit)
+           ; view = (fun () -> "")
+           ; subscriptions =
+               (fun () ->
+                 Sub.batch
+                   [ Sub.worker
+                       ~key:"pipe"
+                       ~on_stop:(fun () ->
+                         incr cleaned;
+                         Unix.close reader)
+                       (fun _ ~dispatch:_ -> Troupe.await_readable reader)
+                   ; Sub.every 0.001 (fun () -> ())
+                   ])
+           }));
   Alcotest.(check int) "blocked reader cleaned once" 1 !cleaned
+;;
 
 type engine_msg =
   | Ready of string Troupe.Address.t
@@ -406,7 +523,9 @@ type engine_msg =
 
 let worker_process_roundtrip () =
   let process = ref None in
-  let cleaned = ref 0 and ticks = ref 0 and replies = ref [] in
+  let cleaned = ref 0
+  and ticks = ref 0
+  and replies = ref [] in
   let cleanup () =
     incr cleaned;
     match !process with
@@ -415,87 +534,131 @@ let worker_process_roundtrip () =
       process := None;
       Unix.close input;
       Unix.close output;
-      (try Unix.kill pid Sys.sigkill with Unix.Unix_error (Unix.ESRCH, _, _) -> ());
+      (try Unix.kill pid Sys.sigkill with
+       | Unix.Unix_error (Unix.ESRCH, _, _) -> ());
       ignore (Unix.waitpid [] pid)
   in
   let worker =
     Sub.worker ~key:"engine" ~on_stop:cleanup (fun self ~dispatch ->
-        let child_input, input = Unix.pipe ~cloexec:true () in
-        let output, child_output = Unix.pipe ~cloexec:true () in
-        let pid =
-          Fun.protect
-            ~finally:(fun () -> Unix.close child_input; Unix.close child_output)
-            (fun () -> Unix.create_process "/bin/sh"
-                [| "sh"; "-c";
-                   "while IFS= read -r line; do sleep 0.03; printf '%s\\n' \"$line\"; done" |]
-                child_input child_output Unix.stderr)
+      let child_input, input = Unix.pipe ~cloexec:true () in
+      let output, child_output = Unix.pipe ~cloexec:true () in
+      let pid =
+        Fun.protect
+          ~finally:(fun () ->
+            Unix.close child_input;
+            Unix.close child_output)
+          (fun () ->
+             Unix.create_process
+               "/bin/sh"
+               [| "sh"
+                ; "-c"
+                ; "while IFS= read -r line; do sleep 0.03; printf '%s\\n' \
+                   \"$line\"; done"
+               |]
+               child_input
+               child_output
+               Unix.stderr)
+      in
+      process := Some (pid, input, output);
+      dispatch (Ready (Troupe.address self));
+      let buf = Bytes.create 1 in
+      let rec loop () =
+        let request = Troupe.receive self () ^ "\n" in
+        ignore (Unix.write_substring input request 0 (String.length request));
+        let reply = Buffer.create 32 in
+        let rec read_line () =
+          Troupe.await_readable output;
+          match Unix.read output buf 0 1 with
+          | 0 -> failwith "unexpected engine EOF"
+          | _ when Bytes.get buf 0 = '\n' -> Buffer.contents reply
+          | _ ->
+            Buffer.add_char reply (Bytes.get buf 0);
+            read_line ()
         in
-        process := Some (pid, input, output);
-        dispatch (Ready (Troupe.address self));
-        let buf = Bytes.create 1 in
-        let rec loop () =
-          let request = Troupe.receive self () ^ "\n" in
-          ignore (Unix.write_substring input request 0 (String.length request));
-          let reply = Buffer.create 32 in
-          let rec read_line () =
-            Troupe.await_readable output;
-            match Unix.read output buf 0 1 with
-            | 0 -> failwith "unexpected engine EOF"
-            | _ when Bytes.get buf 0 = '\n' -> Buffer.contents reply
-            | _ -> Buffer.add_char reply (Bytes.get buf 0); read_line ()
-          in
-          dispatch (Reply (read_line ()));
-          loop ()
-        in
-        loop ())
+        dispatch (Reply (read_line ()));
+        loop ()
+      in
+      loop ())
   in
   with_timeout (fun () ->
-      run_headless ~render:ignore
-        {
-          init = ((), Cmd.none);
-          update = (fun msg () ->
-              match msg with
-              | Ready address ->
-                ((), Cmd.batch [ Cmd.send address "uci"; Cmd.send address "isready" ])
-              | Tick -> incr ticks; ((), Cmd.none)
-              | Reply reply ->
-                replies := reply :: !replies;
-                ((), if List.length !replies = 2 then Cmd.quit else Cmd.none));
-          view = (fun () -> "");
-          subscriptions = (fun () -> Sub.batch
-              [ worker; Sub.every 0.001 (fun () -> Tick) ]);
-        });
-  Alcotest.(check (list string)) "ordered process replies" [ "uci"; "isready" ]
+    run_headless
+      ~render:ignore
+      { init = (), Cmd.none
+      ; update =
+          (fun msg () ->
+            match msg with
+            | Ready address ->
+              ( ()
+              , Cmd.batch [ Cmd.send address "uci"; Cmd.send address "isready" ]
+              )
+            | Tick ->
+              incr ticks;
+              (), Cmd.none
+            | Reply reply ->
+              replies := reply :: !replies;
+              (), if List.length !replies = 2 then Cmd.quit else Cmd.none)
+      ; view = (fun () -> "")
+      ; subscriptions =
+          (fun () -> Sub.batch [ worker; Sub.every 0.001 (fun () -> Tick) ])
+      });
+  Alcotest.(check (list string))
+    "ordered process replies"
+    [ "uci"; "isready" ]
     (List.rev !replies);
   Alcotest.(check bool) "app ticks while waiting for process" true (!ticks > 0);
   Alcotest.(check int) "process cleaned once" 1 !cleaned;
   Alcotest.(check bool) "process released" true (!process = None)
+;;
 
 let () =
-  Alcotest.run "theaterminal"
-    [
-      ("event", [ Alcotest.test_case "parse" `Quick parse_cases;
-                  Alcotest.test_case "unknown sequences" `Quick parse_unknown_sequences ]);
-      ("terminal", [ Alcotest.test_case "restores" `Quick terminal_restores;
-                     Alcotest.test_case "size preserves input" `Quick terminal_size_preserves_input;
-                     Alcotest.test_case "size fallback" `Quick terminal_size_fallback ]);
-      ("cmd", [ Alcotest.test_case "run" `Quick cmd_run ]);
-      ("sub", [ Alcotest.test_case "leaves" `Quick sub_leaves;
-                Alcotest.test_case "distinct keys" `Quick sub_distinct_keys ]);
-      ( "loop",
-        [
-          Alcotest.test_case "counts" `Quick loop_counts;
-          Alcotest.test_case "quits" `Quick loop_quits;
-          Alcotest.test_case "quits with timer" `Quick loop_quits_with_timer;
-          Alcotest.test_case "quits with keys" `Quick loop_quits_with_keys;
-          Alcotest.test_case "dynamic sub stops" `Quick dynamic_sub_stops;
-          Alcotest.test_case "timer callback refresh" `Quick timer_refreshes_callback;
-          Alcotest.test_case "timer interval refresh" `Quick timer_refreshes_interval;
-          Alcotest.test_case "timer keeps deadline" `Quick timer_keeps_deadline;
-          Alcotest.test_case "keys callback refresh" `Quick keys_refresh_callback;
-          Alcotest.test_case "keys batch" `Quick keys_batch;
-          Alcotest.test_case "worker lifecycle" `Quick worker_lifecycle;
-          Alcotest.test_case "worker readable cancellation" `Quick worker_wait_cleanup;
-          Alcotest.test_case "worker process roundtrip" `Quick worker_process_roundtrip;
-        ] );
+  Alcotest.run
+    "theaterminal"
+    [ ( "event"
+      , [ Alcotest.test_case "parse" `Quick parse_cases
+        ; Alcotest.test_case "unknown sequences" `Quick parse_unknown_sequences
+        ] )
+    ; ( "terminal"
+      , [ Alcotest.test_case "restores" `Quick terminal_restores
+        ; Alcotest.test_case
+            "size preserves input"
+            `Quick
+            terminal_size_preserves_input
+        ; Alcotest.test_case "size fallback" `Quick terminal_size_fallback
+        ] )
+    ; "cmd", [ Alcotest.test_case "run" `Quick cmd_run ]
+    ; ( "sub"
+      , [ Alcotest.test_case "leaves" `Quick sub_leaves
+        ; Alcotest.test_case "distinct keys" `Quick sub_distinct_keys
+        ] )
+    ; ( "loop"
+      , [ Alcotest.test_case "counts" `Quick loop_counts
+        ; Alcotest.test_case "quits" `Quick loop_quits
+        ; Alcotest.test_case "quits with timer" `Quick loop_quits_with_timer
+        ; Alcotest.test_case "quits with keys" `Quick loop_quits_with_keys
+        ; Alcotest.test_case "dynamic sub stops" `Quick dynamic_sub_stops
+        ; Alcotest.test_case
+            "timer callback refresh"
+            `Quick
+            timer_refreshes_callback
+        ; Alcotest.test_case
+            "timer interval refresh"
+            `Quick
+            timer_refreshes_interval
+        ; Alcotest.test_case "timer keeps deadline" `Quick timer_keeps_deadline
+        ; Alcotest.test_case
+            "keys callback refresh"
+            `Quick
+            keys_refresh_callback
+        ; Alcotest.test_case "keys batch" `Quick keys_batch
+        ; Alcotest.test_case "worker lifecycle" `Quick worker_lifecycle
+        ; Alcotest.test_case
+            "worker readable cancellation"
+            `Quick
+            worker_wait_cleanup
+        ; Alcotest.test_case
+            "worker process roundtrip"
+            `Quick
+            worker_process_roundtrip
+        ] )
     ]
+;;

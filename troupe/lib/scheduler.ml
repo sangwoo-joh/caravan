@@ -7,32 +7,34 @@ module Make (R : Reactor.S) = struct
     let next_id = ref 0 in
     let fresh () =
       incr next_id;
-      {
-        Core.id = !next_id;
-        identity = ref ();
-        mailbox = Mailbox.create ();
-        waiting = None;
-        alive = true;
+      { Core.id = !next_id
+      ; identity = ref ()
+      ; mailbox = Mailbox.create ()
+      ; waiting = None
+      ; alive = true
       }
     in
     let run_queue = Queue.create () in
     let enqueue f = Queue.push f run_queue in
     let reactor = R.create () in
-    let fd_waiters :
-        ( Unix.file_descr,
-          packed * (unit, unit) Effect.Deep.continuation )
-        Hashtbl.t =
+    let fd_waiters
+      : ( Unix.file_descr
+          , packed * (unit, unit) Effect.Deep.continuation )
+          Hashtbl.t
+      =
       Hashtbl.create 8
     in
-    let timers :
-        (float * packed * (unit, unit) Effect.Deep.continuation) list ref =
+    let timers
+      : (float * packed * (unit, unit) Effect.Deep.continuation) list ref
+      =
       ref []
     in
     (* Resume a fiber, unless it was cancelled between suspension and now, in
        which case its continuation is simply dropped. *)
-    let resume : type a.
-        packed -> (a, unit) Effect.Deep.continuation -> a -> unit =
-     fun (Packed c) k v ->
+    let resume
+      : type a. packed -> (a, unit) Effect.Deep.continuation -> a -> unit
+      =
+      fun (Packed c) k v ->
       enqueue (fun () -> if c.Core.alive then Effect.Deep.continue k v)
     in
     let finish cell =
@@ -41,55 +43,56 @@ module Make (R : Reactor.S) = struct
       Mailbox.clear cell.Core.mailbox
     in
     let deliver : type a. a Core.cell -> a -> unit =
-     fun cell msg ->
-      if cell.Core.alive then begin
+      fun cell msg ->
+      if cell.Core.alive
+      then (
         Mailbox.push cell.Core.mailbox msg;
         match cell.Core.waiting with
         | None -> ()
-        | Some (filter, k) -> (
-          match Mailbox.take cell.Core.mailbox filter with
-          | exception exn ->
-            cell.Core.waiting <- None;
-            enqueue (fun () ->
-                if cell.Core.alive then Effect.Deep.discontinue k exn)
-          | None -> ()
-          | Some m ->
-            cell.Core.waiting <- None;
-            resume (Packed cell) k m)
-      end
+        | Some (filter, k) ->
+          (match Mailbox.take cell.Core.mailbox filter with
+           | exception exn ->
+             cell.Core.waiting <- None;
+             enqueue (fun () ->
+               if cell.Core.alive then Effect.Deep.discontinue k exn)
+           | None -> ()
+           | Some m ->
+             cell.Core.waiting <- None;
+             resume (Packed cell) k m))
     in
     (* Cancel a (possibly parked) actor: mark it dead, drop its receive
        continuation, and release any descriptor or timer it was blocked on so
        the scheduler can still go idle. A resume already queued for it is skipped
        by the [alive] guard in {!resume}. *)
     let stop : type a. a Core.cell -> unit =
-     fun cell ->
+      fun cell ->
       finish cell;
       let waited_fd =
         Hashtbl.fold
           (fun fd (Packed c, _) acc ->
-            if c.Core.identity == cell.Core.identity then Some fd else acc)
-          fd_waiters None
+             if c.Core.identity == cell.Core.identity then Some fd else acc)
+          fd_waiters
+          None
       in
       (match waited_fd with
-      | Some fd ->
-        Hashtbl.remove fd_waiters fd;
-        R.remove_reader reactor fd
-      | None -> ());
-      timers :=
-        List.filter
-          (fun (_, Packed c, _) -> c.Core.identity != cell.Core.identity)
-          !timers
+       | Some fd ->
+         Hashtbl.remove fd_waiters fd;
+         R.remove_reader reactor fd
+       | None -> ());
+      timers
+      := List.filter
+           (fun (_, Packed c, _) -> c.Core.identity != cell.Core.identity)
+           !timers
     in
     let rec run_body : type a. a Core.body -> a Core.cell -> unit =
-     fun body cell ->
+      fun body cell ->
       let handler =
-        {
-          Effect.Deep.retc = (fun () -> finish cell);
-          exnc = (fun e ->
-            finish cell;
-            raise e);
-          effc =
+        { Effect.Deep.retc = (fun () -> finish cell)
+        ; exnc =
+            (fun e ->
+              finish cell;
+              raise e)
+        ; effc =
             (fun (type b) (eff : b Effect.t) ->
               match eff with
               | Core.Cast body ->
@@ -106,36 +109,39 @@ module Make (R : Reactor.S) = struct
               | Core.Receive (self, filter) ->
                 Some
                   (fun k ->
-                    if self.Core.identity != cell.Core.identity then
-                      Effect.Deep.discontinue k
-                        (Invalid_argument "Troupe.receive: self belongs to another actor")
-                    else
+                    if self.Core.identity != cell.Core.identity
+                    then
+                      Effect.Deep.discontinue
+                        k
+                        (Invalid_argument
+                           "Troupe.receive: self belongs to another actor")
+                    else (
                       match Mailbox.take self.Core.mailbox filter with
                       | exception exn -> Effect.Deep.discontinue k exn
                       | Some m -> Effect.Deep.continue k m
                       | None ->
-                        if cell.Core.alive then
-                          self.Core.waiting <- Some (filter, k))
+                        if cell.Core.alive
+                        then self.Core.waiting <- Some (filter, k)))
               | Core.Await_readable fd ->
                 Some
                   (fun k ->
-                    if cell.Core.alive then begin
+                    if cell.Core.alive
+                    then (
                       Hashtbl.replace fd_waiters fd (Packed cell, k);
-                      R.add_reader reactor fd
-                    end)
+                      R.add_reader reactor fd))
               | Core.Sleep seconds ->
                 Some
                   (fun k ->
-                    if cell.Core.alive then begin
+                    if cell.Core.alive
+                    then (
                       let deadline = Unix.gettimeofday () +. seconds in
-                      timers := (deadline, Packed cell, k) :: !timers
-                    end)
+                      timers := (deadline, Packed cell, k) :: !timers))
               | Core.Stop target ->
                 Some
                   (fun k ->
                     stop target;
                     Effect.Deep.continue k ())
-              | _ -> None);
+              | _ -> None)
         }
       in
       Effect.Deep.match_with (fun () -> body cell) () handler
@@ -158,32 +164,33 @@ module Make (R : Reactor.S) = struct
     in
     let wait timeout =
       R.wait reactor ~timeout (fun fd ->
-          match Hashtbl.find_opt fd_waiters fd with
-          | None -> ()
-          | Some (owner, k) ->
-            Hashtbl.remove fd_waiters fd;
-            R.remove_reader reactor fd;
-            resume owner k ())
+        match Hashtbl.find_opt fd_waiters fd with
+        | None -> ()
+        | Some (owner, k) ->
+          Hashtbl.remove fd_waiters fd;
+          R.remove_reader reactor fd;
+          resume owner k ())
     in
     let rec loop () =
       fire_expired ();
-      if not (Queue.is_empty run_queue) && Hashtbl.length fd_waiters > 0 then
-        wait (Some 0.);
+      if (not (Queue.is_empty run_queue)) && Hashtbl.length fd_waiters > 0
+      then wait (Some 0.);
       match Queue.take_opt run_queue with
       | Some thunk ->
         thunk ();
         loop ()
       | None ->
-        if Hashtbl.length fd_waiters = 0 && !timers = [] then ()
-        else begin
+        if Hashtbl.length fd_waiters = 0 && !timers = []
+        then ()
+        else (
           let timeout =
             match earliest () with
             | None -> None
             | Some d -> Some (Float.max 0.0 (d -. Unix.gettimeofday ()))
           in
           wait timeout;
-          loop ()
-        end
+          loop ())
     in
     loop ()
+  ;;
 end

@@ -10,8 +10,11 @@ end
 
 let cast body = Effect.perform (Core.Cast body)
 let send addr msg = Effect.perform (Core.Send (addr, msg))
+
 let receive self ?(matching = fun _ -> true) () =
   Effect.perform (Core.Receive (self, matching))
+;;
+
 let address self = self
 let await_readable fd = Effect.perform (Core.Await_readable fd)
 let sleep seconds = Effect.perform (Core.Sleep seconds)

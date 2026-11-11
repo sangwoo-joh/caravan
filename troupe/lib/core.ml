@@ -4,14 +4,14 @@
    them — while staying hidden from the public API (they are not re-exported by
    {!Troupe}). *)
 
-type 'msg cell = {
-  id : int;
-  identity : unit ref;
-  mailbox : 'msg Mailbox.t;
-  mutable waiting :
-    (('msg -> bool) * ('msg, unit) Effect.Deep.continuation) option;
-  mutable alive : bool;
-}
+type 'msg cell =
+  { id : int
+  ; identity : unit ref
+  ; mailbox : 'msg Mailbox.t
+  ; mutable waiting :
+      (('msg -> bool) * ('msg, unit) Effect.Deep.continuation) option
+  ; mutable alive : bool
+  }
 
 type 'msg self = 'msg cell
 type 'msg body = 'msg self -> unit

@@ -13,19 +13,14 @@ type 'msg source =
 
 val none : 'msg t
 
-val keys : (Event.key -> 'msg option) -> 'msg t
 (** [keys f] turns each key press into [f key], dispatching when it is [Some]. *)
+val keys : (Event.key -> 'msg option) -> 'msg t
 
-val every : ?key:string -> float -> (unit -> 'msg) -> 'msg t
 (** [every seconds f] dispatches [f ()] every [seconds]. Its diffing key
     defaults to the interval; pass [~key] to distinguish timers that share one,
     or to keep a timer stable while its interval changes. *)
+val every : ?key:string -> float -> (unit -> 'msg) -> 'msg t
 
-val worker :
-  key:string ->
-  on_stop:(unit -> unit) ->
-  ('request Troupe.self -> dispatch:('msg -> unit) -> unit) ->
-  'msg t
 (** [worker ~key ~on_stop run] is a subscription running [run self ~dispatch]
     in an actor. [dispatch] sends a message to the app. The actor can publish
     [Troupe.address self] and receive requests sent with {!Cmd.send}.
@@ -45,12 +40,17 @@ val worker :
     partially acquired resources. Cancellation does not unwind [run], so
     resources must be released by [on_stop], rather than only by [Fun.protect]
     inside [run]. Unhandled worker exceptions terminate the app. *)
+val worker
+  :  key:string
+  -> on_stop:(unit -> unit)
+  -> ('request Troupe.self -> dispatch:('msg -> unit) -> unit)
+  -> 'msg t
 
-val batch : 'msg t list -> 'msg t
 (** [batch subs] combines the subscriptions in [subs]. Each key press is
     delivered to every keyboard handler in list order. *)
+val batch : 'msg t list -> 'msg t
 
-val leaves : 'msg t -> (string * 'msg source) list
 (** Flatten to keyed leaf sources. Keys are stable across evaluations, so the
     runtime can diff two subscription sets and leave unchanged sources running.
     Used by the runtime. *)
+val leaves : 'msg t -> (string * 'msg source) list

@@ -1,23 +1,23 @@
 (** Low-level terminal control: raw mode, the alternate screen, and frame
     drawing. All output goes to [stdout]; input is read from [stdin] elsewhere. *)
 
-val setup : unit -> unit
 (** [setup ()] switches [stdin] into raw mode (no line buffering, no echo, no
     signal keys), enters the alternate screen, and hides the cursor. It also
     registers {!release} with [at_exit] so the terminal is restored even if the
     program exits abnormally. *)
+val setup : unit -> unit
 
-val release : unit -> unit
 (** [release ()] restores the cursor, leaves the alternate screen, and puts
     [stdin] back into its original mode. Safe to call more than once. *)
+val release : unit -> unit
 
-val size : unit -> int * int
 (** [size ()] is the terminal's [(rows, columns)], queried once during {!setup}
     from the output terminal without reading input. Falls back to [(24, 80)]
     if the size is unavailable. Not refreshed on resize. *)
+val size : unit -> int * int
 
-val render : string -> unit
 (** [render frame] redraws [frame] from the top-left, overwriting the previous
     frame in place (no clear-then-draw, so no flicker). Lines are separated by
     ['\n']. The whole frame is rewritten each call; unchanged lines are not
     diffed away. *)
+val render : string -> unit

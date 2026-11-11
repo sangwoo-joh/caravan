@@ -18,3 +18,4 @@ let rec run t ~dispatch ~on_quit =
   | Quit -> on_quit ()
   | Send (address, request) -> Troupe.send address request
   | Batch cs -> List.iter (fun c -> run c ~dispatch ~on_quit) cs
+;;

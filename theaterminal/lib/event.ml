@@ -13,14 +13,18 @@ type key =
 let parse s =
   let n = String.length s in
   let rec sequence_end i =
-    if i >= n then n
-    else if s.[i] >= '\x40' && s.[i] <= '\x7e' then i + 1
-    else if s.[i] >= '\x20' && s.[i] <= '\x3f' then sequence_end (i + 1)
+    if i >= n
+    then n
+    else if s.[i] >= '\x40' && s.[i] <= '\x7e'
+    then i + 1
+    else if s.[i] >= '\x20' && s.[i] <= '\x3f'
+    then sequence_end (i + 1)
     else i
   in
   let rec go i acc =
-    if i >= n then List.rev acc
-    else
+    if i >= n
+    then List.rev acc
+    else (
       match s.[i] with
       | '\r' | '\n' -> go (i + 1) (Enter :: acc)
       | '\t' -> go (i + 1) (Tab :: acc)
@@ -40,9 +44,10 @@ let parse s =
       | '\x1b' -> go (i + 1) (Escape :: acc)
       | c when Char.code c >= 0x20 && Char.code c < 0x7f ->
         go (i + 1) (Char c :: acc)
-      | c -> go (i + 1) (Unknown (String.make 1 c) :: acc)
+      | c -> go (i + 1) (Unknown (String.make 1 c) :: acc))
   in
   go 0 []
+;;
 
 let equal = ( = )
 
@@ -57,3 +62,4 @@ let pp fmt = function
   | Left -> Format.pp_print_string fmt "Left"
   | Right -> Format.pp_print_string fmt "Right"
   | Unknown s -> Format.fprintf fmt "Unknown %S" s
+;;
