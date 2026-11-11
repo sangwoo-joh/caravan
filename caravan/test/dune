@@ -1,3 +1,9 @@
 (test
  (name test_caravan_ui)
+ (modules test_caravan_ui)
  (libraries caravan_ui theaterminal alcotest))
+
+(test
+ (name test_modules)
+ (modules test_modules)
+ (libraries caravan_ui alcotest))

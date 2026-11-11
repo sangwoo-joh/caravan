@@ -1,6 +1,10 @@
 (** Caravan screens and keyboard navigation. *)
 
 module Piece = Piece
+module State = State
+module Logic = Logic
+module Uci = Uci
+module Stockfish = Stockfish
 
 (** The current screen, difficulty, and temporary session save. *)
 type model

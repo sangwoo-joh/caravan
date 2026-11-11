@@ -1,5 +1,9 @@
 open Theaterminal
 module Piece = Piece
+module State = State
+module Logic = Logic
+module Uci = Uci
+module Stockfish = Stockfish
 
 type difficulty =
   | Easy
@@ -12,7 +16,7 @@ type focus =
   | Main_menu
 
 type game =
-  { board : Piece.t option array
+  { state : State.t
   ; square : int
   ; selected : int option
   ; input : string
@@ -38,22 +42,7 @@ let initial =
 ;;
 
 let new_game () =
-  let open Piece in
-  let back_rank =
-    [| Rook; Knight; Bishop; Queen; King; Bishop; Knight; Rook |]
-  in
-  let board =
-    Array.init 64 (fun square ->
-      let row = square / 8
-      and col = square mod 8 in
-      match row with
-      | 0 -> Some (make_piece back_rank.(col) Black)
-      | 1 -> Some (make_piece Pawn Black)
-      | 6 -> Some (make_piece Pawn White)
-      | 7 -> Some (make_piece back_rank.(col) White)
-      | _ -> None)
-  in
-  { board
+  { state = State.initial ()
   ; square = 52
   ; selected = None
   ; input = ""
@@ -74,25 +63,6 @@ let difficulties = [| Easy; Normal; Hard |]
 let confirm = function
   | Event.Enter | Event.Char ' ' -> true
   | _ -> false
-;;
-
-let square_name square =
-  Printf.sprintf
-    "%c%d"
-    (Char.chr (Char.code 'a' + (square mod 8)))
-    (8 - (square / 8))
-;;
-
-let valid_move text =
-  let file c = c >= 'a' && c <= 'h' in
-  let rank c = c >= '1' && c <= '8' in
-  let n = String.length text in
-  (n = 4 || n = 5)
-  && file text.[0]
-  && rank text.[1]
-  && file text.[2]
-  && rank text.[3]
-  && (n = 4 || String.contains "qrbn" text.[4])
 ;;
 
 let preview game move =
@@ -119,7 +89,7 @@ let board_key key game =
   | key when confirm key ->
     if game.input <> ""
     then
-      if valid_move game.input
+      if Result.is_ok (Uci.move_of_string game.input)
       then preview game game.input
       else { game with notice = "Use a move such as e2e4 or e7e8q." }
     else (
@@ -127,7 +97,7 @@ let board_key key game =
       | None -> { game with selected = Some game.square }
       | Some square when square = game.square -> { game with selected = None }
       | Some square ->
-        preview game (square_name square ^ square_name game.square))
+        preview game (Uci.square_name square ^ Uci.square_name game.square))
   | Event.Char c when String.contains "abcdefgh12345678qrbn" c ->
     if String.length game.input < 5
     then { game with input = game.input ^ String.make 1 c }
@@ -278,7 +248,7 @@ let play game difficulty =
         List.init 8 (fun col ->
           let square = (row * 8) + col in
           let figure =
-            match game.board.(square) with
+            match State.piece_at game.state square with
             | Some piece -> piece.figure
             | None -> "."
           in
