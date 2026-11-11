@@ -65,12 +65,44 @@ let save_load () =
         Event.Right; Event.Enter; Event.Down; Event.Enter; Event.Down; Event.Enter ] in
   shows model "Last preview: d2d4"
 
+let pieces () =
+  let open Caravan_ui in
+  let cases =
+    [ Pawn, "♙", "♟"; Knight, "♘", "♞"; Bishop, "♗", "♝";
+      Rook, "♖", "♜"; Queen, "♕", "♛"; King, "♔", "♚" ] in
+  let previous = ref None in
+  List.iter (fun (kind, white, black) ->
+      List.iter (fun (colour, figure) ->
+          let piece = make_piece kind colour in
+          Alcotest.(check bool) "kind preserved" true (piece.kind = kind);
+          Alcotest.(check bool) "colour preserved" true (piece.colour = colour);
+          Alcotest.(check string) "chess figure" figure piece.figure;
+          Option.iter (fun id ->
+              Alcotest.(check int) "incrementing ID" (id + 1) piece.id) !previous;
+          previous := Some piece.id)
+        [ White, white; Black, black ]) cases
+
+let board_figures () =
+  let model = steps [ Event.Enter ] in
+  List.iter (shows model)
+    [ "♜  ♞  ♝  ♛  ♚  ♝  ♞  ♜";
+      "♖  ♘  ♗  ♕  ♔  ♗  ♘  ♖"; "[♙]"; "♟" ];
+  let before = Caravan_ui.make_piece Pawn White in
+  ignore (Caravan_ui.view model);
+  ignore (Caravan_ui.view (step model Event.Up));
+  let after = Caravan_ui.make_piece Pawn White in
+  Alcotest.(check int) "rendering does not create pieces" (before.id + 1) after.id;
+  ignore (steps [ Event.Enter ]);
+  let next = Caravan_ui.make_piece Pawn White in
+  Alcotest.(check int) "new game creates 32 pieces" (after.id + 33) next.id
+
 let frame_size () =
   List.iter (fun model ->
       let lines = String.split_on_char '\n' (Caravan_ui.view model) in
       Alcotest.(check bool) "fits 24 rows" true (List.length lines <= 24);
       List.iter (fun line ->
-          Alcotest.(check bool) "fits 80 columns" true (String.length line < 80)) lines)
+          Alcotest.(check bool) "fits 80 columns" true (String.fold_left (fun width c ->
+               if Char.code c land 0xc0 = 0x80 then width else width + 1) 0 line < 80)) lines)
     [ Caravan_ui.initial; steps [ Event.Enter ];
       steps [ Event.Down; Event.Down; Event.Enter ] ]
 
@@ -80,4 +112,6 @@ let () =
                  Alcotest.test_case "difficulty and navigation" `Quick settings;
                  Alcotest.test_case "move previews" `Quick move_preview;
                  Alcotest.test_case "latest session save" `Quick save_load;
+                 Alcotest.test_case "piece creation" `Quick pieces;
+                 Alcotest.test_case "board figures" `Quick board_figures;
                  Alcotest.test_case "terminal size" `Quick frame_size ] ]

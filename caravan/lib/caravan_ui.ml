@@ -1,8 +1,39 @@
 open Theaterminal
 
+type piece_kind = Pawn | Knight | Bishop | Rook | Queen | King
+type piece_colour = White | Black
+type piece = {
+  id : int;
+  kind : piece_kind;
+  colour : piece_colour;
+  figure : string;
+}
+
+let next_piece_id = ref 0
+
+let make_piece kind colour =
+  let figure =
+    match colour, kind with
+    | White, Pawn -> "♙"
+    | White, Knight -> "♘"
+    | White, Bishop -> "♗"
+    | White, Rook -> "♖"
+    | White, Queen -> "♕"
+    | White, King -> "♔"
+    | Black, Pawn -> "♟"
+    | Black, Knight -> "♞"
+    | Black, Bishop -> "♝"
+    | Black, Rook -> "♜"
+    | Black, Queen -> "♛"
+    | Black, King -> "♚"
+  in
+  incr next_piece_id;
+  { id = !next_piece_id; kind; colour; figure }
+
 type difficulty = Easy | Normal | Hard
 type focus = Board | Save | Main_menu
 type game = {
+  board : piece option array;
   square : int;
   selected : int option;
   input : string;
@@ -21,8 +52,17 @@ type model = {
 let initial =
   { screen = Landing 0; difficulty = Normal; saved = None; notice = "" }
 
-let new_game =
-  { square = 52; selected = None; input = ""; move = None;
+let new_game () =
+  let back_rank = [| Rook; Knight; Bishop; Queen; King; Bishop; Knight; Rook |] in
+  let board = Array.init 64 (fun square ->
+      let row = square / 8 and col = square mod 8 in
+      match row with
+      | 0 -> Some (make_piece back_rank.(col) Black)
+      | 1 -> Some (make_piece Pawn Black)
+      | 6 -> Some (make_piece Pawn White)
+      | 7 -> Some (make_piece back_rank.(col) White)
+      | _ -> None) in
+  { board; square = 52; selected = None; input = ""; move = None;
     focus = Board; notice = "Select a piece or type a move, e.g. e2e4." }
 
 let difficulty_name = function Easy -> "Easy" | Normal -> "Normal" | Hard -> "Hard"
@@ -81,7 +121,7 @@ let update key model =
         | Event.Down -> { model with screen = Landing (min 3 (cursor + 1)) }, false
         | key when confirm key ->
           begin match cursor with
-          | 0 -> { model with screen = Play new_game; notice = "" }, false
+          | 0 -> { model with screen = Play (new_game ()); notice = "" }, false
           | 1 ->
             begin match model.saved with
             | Some game ->
@@ -162,8 +202,6 @@ let setting cursor difficulty =
   ^ "\n\n  Up/Down: choose   Enter/Space: confirm   Ctrl+C: quit\n"
 
 let play game difficulty =
-  let pieces = [| "rnbqkbnr"; "pppppppp"; "........"; "........";
-                  "........"; "........"; "PPPPPPPP"; "RNBQKBNR" |] in
   let side row =
     match row with
     | 0 -> "  Difficulty: " ^ difficulty_name difficulty
@@ -176,10 +214,12 @@ let play game difficulty =
   let rows = List.init 8 (fun row ->
       let cells = List.init 8 (fun col ->
           let square = row * 8 + col in
-          let piece = pieces.(row).[col] in
-          if game.focus = Board && game.square = square then Printf.sprintf "[%c]" piece
-          else if game.selected = Some square then Printf.sprintf "{%c}" piece
-          else Printf.sprintf " %c " piece) in
+          let figure = match game.board.(square) with
+            | Some piece -> piece.figure
+            | None -> "." in
+          if game.focus = Board && game.square = square then Printf.sprintf "[%s]" figure
+          else if game.selected = Some square then Printf.sprintf "{%s}" figure
+          else Printf.sprintf " %s " figure) in
       Printf.sprintf "  %d  %s  %d%s" (8 - row) (String.concat "" cells) (8 - row) (side row)) in
   "\n  Caravan / Play\n\n      a  b  c  d  e  f  g  h\n"
   ^ String.concat "\n" rows

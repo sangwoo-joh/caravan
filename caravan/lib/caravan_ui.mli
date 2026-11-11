@@ -1,5 +1,19 @@
 (** Caravan screens and keyboard navigation. *)
 
+type piece_kind = Pawn | Knight | Bishop | Rook | Queen | King
+type piece_colour = White | Black
+type piece = {
+  id : int;
+  kind : piece_kind;
+  colour : piece_colour;
+  figure : string;
+}
+
+val make_piece : piece_kind -> piece_colour -> piece
+(** [make_piece kind colour] is a new piece of [kind] and [colour] with the
+    corresponding Unicode chess figure. IDs start at 1 and increase with each
+    call during the current process. Calls must be made sequentially. *)
+
 type model
 (** The current screen, difficulty, and temporary session save. *)
 
