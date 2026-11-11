@@ -1,4 +1,13 @@
 #!/bin/sh
+# Caravan and this script are MIT-licensed. Stockfish remains licensed under
+# GPLv3, including when downloaded as a binary. Running it as a separate
+# process through UCI does not, by itself, require relicensing Caravan.
+# Redistributing Stockfish requires preserving its license and copyright
+# notices and providing its Corresponding Source as required by GPLv3.
+# This script downloads the official release and preserves its bundled files.
+# https://github.com/official-stockfish/Stockfish/tree/sf_19#terms-of-use
+# https://www.gnu.org/licenses/gpl-3.0.html
+
 set -eu
 
 version=19
