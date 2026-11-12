@@ -1,4 +1,4 @@
-type move = string
+type move = State.move
 
 type command =
   | Uci
@@ -35,18 +35,49 @@ let move_of_string text =
     && file text.[2]
     && rank text.[3]
     && (n = 4 || String.contains "qrbn" text.[4])
-  then Ok text
+  then (
+    let square file rank =
+      ((8 - (Char.code rank - Char.code '0')) * 8)
+      + Char.code file
+      - Char.code 'a'
+    in
+    let promotion =
+      if n = 4
+      then None
+      else
+        Some
+          (match text.[4] with
+           | 'q' -> Piece.Queen
+           | 'r' -> Piece.Rook
+           | 'b' -> Piece.Bishop
+           | _ -> Piece.Knight)
+    in
+    State.move ?promotion (square text.[0] text.[1]) (square text.[2] text.[3]))
   else Error "Use a move such as e2e4 or e7e8q."
 ;;
 
-let move_to_string move = move
+let move_to_string (move : move) =
+  let promotion =
+    match move.promotion with
+    | None -> ""
+    | Some Piece.Queen -> "q"
+    | Some Piece.Rook -> "r"
+    | Some Piece.Bishop -> "b"
+    | Some Piece.Knight -> "n"
+    | Some (Piece.Pawn | Piece.King) -> invalid_arg "Uci.move_to_string"
+  in
+  square_name move.from_square ^ square_name move.to_square ^ promotion
+;;
 
 let command_to_string = function
   | Uci -> Ok "uci"
   | Isready -> Ok "isready"
   | Ucinewgame -> Ok "ucinewgame"
   | Position [] -> Ok "position startpos"
-  | Position moves -> Ok ("position startpos moves " ^ String.concat " " moves)
+  | Position moves ->
+    Ok
+      ("position startpos moves "
+       ^ String.concat " " (List.map move_to_string moves))
   | Go_movetime milliseconds when milliseconds > 0 ->
     Ok (Printf.sprintf "go movetime %d" milliseconds)
   | Go_movetime _ -> Error "Search time must be positive."

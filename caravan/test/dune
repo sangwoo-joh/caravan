@@ -5,5 +5,5 @@
 
 (test
  (name test_modules)
- (modules test_modules)
+ (modules test_modules test_logic)
  (libraries caravan_ui alcotest))

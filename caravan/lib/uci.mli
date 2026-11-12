@@ -1,4 +1,4 @@
-type move
+type move = State.move
 
 type command =
   | Uci

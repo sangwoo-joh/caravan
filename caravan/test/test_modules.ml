@@ -92,10 +92,11 @@ let () =
   in
   Alcotest.run
     "modules"
-    [ ( "core"
-      , [ Alcotest.test_case "initial state" `Quick state
-        ; Alcotest.test_case "UCI" `Quick uci
-        ] )
-    ; "stockfish", integration
-    ]
+    ([ ( "core"
+       , [ Alcotest.test_case "initial state" `Quick state
+         ; Alcotest.test_case "UCI" `Quick uci
+         ] )
+     ; "stockfish", integration
+     ]
+     @ Test_logic.suite)
 ;;
