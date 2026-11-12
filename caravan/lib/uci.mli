@@ -6,6 +6,8 @@ type command =
   | Ucinewgame
   | Position of move list
   | Position_state of State.t
+  | Skill_level of int
+  | Limit_strength of bool
   | Go_movetime of int
   | Stop
   | Quit

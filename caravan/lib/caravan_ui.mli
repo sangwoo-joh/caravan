@@ -25,8 +25,10 @@ val view : model -> string
 type message =
   | Key of Theaterminal.Event.key
   | Shake_tick
+  | Engine_result of State.t * (State.move, string) result
 
 val start_game : State.t -> model
+val make_app : executable:string -> (model, message) Theaterminal.app
 
 (** [app] is the interactive Caravan game. *)
 val app : (model, message) Theaterminal.app

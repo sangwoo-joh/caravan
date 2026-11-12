@@ -23,6 +23,8 @@ type game =
   ; focus : focus
   ; notice : string
   ; shake : int
+  ; difficulty : difficulty
+  ; engine_failed : bool
   }
 
 type screen =
@@ -47,7 +49,7 @@ let initial =
   }
 ;;
 
-let new_game state =
+let new_game ?(difficulty = Normal) state =
   { state
   ; square = (if State.user_colour state = Piece.White then 52 else 12)
   ; input = ""
@@ -55,6 +57,8 @@ let new_game state =
   ; focus = Board
   ; notice = "Select a piece or type a move, e.g. e2e4."
   ; shake = 0
+  ; difficulty
+  ; engine_failed = false
   }
 ;;
 
@@ -91,12 +95,8 @@ let piece_name = function
   | King -> "king"
 ;;
 
-let place game (move : State.move) =
-  let result =
-    Result.bind (State.pick game.state move.from_square) (fun _ ->
-      Logic.play game.state move)
-  in
-  match result with
+let apply_move game (move : State.move) =
+  match Logic.play game.state move with
   | Error reason -> reject_move game reason
   | Ok state ->
     let captured =
@@ -114,8 +114,18 @@ let place game (move : State.move) =
     in
     let notice =
       match captured with
-      | Some piece -> "Captured opponent's " ^ piece_name piece.kind ^ "."
-      | None -> "Moved " ^ Uci.move_to_string move ^ "."
+      | Some piece ->
+        (if State.turn game.state = State.user_colour game.state
+         then "Captured opponent's "
+         else "PC captured your ")
+        ^ piece_name piece.kind
+        ^ "."
+      | None ->
+        (if State.turn game.state = State.user_colour game.state
+         then "Moved "
+         else "PC moved ")
+        ^ Uci.move_to_string move
+        ^ "."
     in
     { game with
       state
@@ -124,6 +134,27 @@ let place game (move : State.move) =
     ; notice
     ; shake = 0
     }
+;;
+
+let place game move =
+  match State.pick game.state move.State.from_square with
+  | Error error -> reject_move game error
+  | Ok _ -> apply_move game move
+;;
+
+let skill_level = function
+  | Easy -> 0
+  | Normal -> 5
+  | Hard -> 10
+;;
+
+let computer_turn game =
+  State.turn game.state <> State.user_colour game.state
+  && (not game.engine_failed)
+  &&
+  match Logic.status game.state with
+  | Playing | Check -> true
+  | Checkmate _ | Draw _ -> false
 ;;
 
 let select_or_place game =
@@ -215,6 +246,7 @@ let update key model =
                   screen =
                     Play
                       (new_game
+                         ~difficulty:model.difficulty
                          (State.initial ~user_colour:model.user_colour ()))
                 ; notice = ""
                 }
@@ -227,6 +259,7 @@ let update key model =
                        Play
                          { game with
                            focus = Board
+                         ; engine_failed = false
                          ; notice =
                              "Loaded the latest session save (not a disk save)."
                          }
@@ -346,7 +379,7 @@ let setting cursor difficulty user_colour =
   ^ "\n\n  Up/Down: choose   Enter/Space: confirm   Ctrl+C: quit\n"
 ;;
 
-let play game difficulty =
+let play game =
   let destinations =
     match State.action game.state with
     | Think -> []
@@ -362,7 +395,7 @@ let play game difficulty =
   in
   let side row =
     match row with
-    | 0 -> "  Difficulty: " ^ difficulty_name difficulty
+    | 0 -> "  Difficulty: " ^ difficulty_name game.difficulty
     | 1 ->
       if State.user_colour game.state = Piece.White
       then "  White: You   Black: Stockfish"
@@ -378,7 +411,12 @@ let play game difficulty =
     | 5 ->
       "  Turn: "
       ^ if State.turn game.state = Piece.White then "White" else "Black"
-    | 6 -> "  Engine: not connected"
+    | 6 ->
+      if game.engine_failed
+      then "  Engine: error"
+      else if computer_turn game
+      then "  Engine: thinking (1s)"
+      else "  Engine: ready"
     | 7 -> "  [ ] cursor   { } picked"
     | _ -> ""
   in
@@ -438,20 +476,50 @@ let play game difficulty =
 let view model =
   match model.screen with
   | Landing cursor -> landing cursor model.notice
-  | Play game -> play game model.difficulty
+  | Play game -> play game
   | Setting cursor -> setting cursor model.difficulty model.user_colour
 ;;
 
 type message =
   | Key of Event.key
   | Shake_tick
+  | Engine_result of State.t * (State.move, string) result
 
-let app =
+let make_app ~executable =
   { init = initial, Cmd.none
   ; update =
       (fun message model ->
         match message with
         | Key key -> update key model
+        | Engine_result (expected, result) ->
+          let model =
+            match model.screen with
+            | Play game when game.state == expected && computer_turn game ->
+              let game =
+                match result with
+                | Ok move ->
+                  (match Logic.validate_move game.state move with
+                   | Ok () -> apply_move game move
+                   | Error error ->
+                     { game with
+                       engine_failed = true
+                     ; notice = "Engine error: " ^ error
+                     })
+                | Error error ->
+                  let error =
+                    if String.length error > 60
+                    then String.sub error 0 60 ^ "..."
+                    else error
+                  in
+                  { game with
+                    engine_failed = true
+                  ; notice = "Engine error: " ^ error
+                  }
+              in
+              { model with screen = Play game }
+            | _ -> model
+          in
+          model, Cmd.none
         | Shake_tick ->
           let model =
             match model.screen with
@@ -465,8 +533,63 @@ let app =
       (fun model ->
         let keys = Sub.keys (fun key -> Some (Key key)) in
         match model.screen with
-        | Play game when game.shake > 0 ->
-          Sub.batch [ keys; Sub.every 0.06 (fun () -> Shake_tick) ]
+        | Play game ->
+          let shake =
+            if game.shake > 0
+            then Sub.every 0.06 (fun () -> Shake_tick)
+            else Sub.none
+          in
+          let engine =
+            if not (computer_turn game)
+            then Sub.none
+            else (
+              let process = ref None in
+              let cleanup () =
+                Option.iter Stockfish.terminate !process;
+                process := None
+              in
+              Sub.worker ~key:"stockfish" ~on_stop:cleanup (fun _ ~dispatch ->
+                let result =
+                  match Stockfish.start executable with
+                  | Error error -> Error error
+                  | Ok engine ->
+                    process := Some engine;
+                    ignore
+                      (Troupe.cast (fun _ ->
+                         ignore (Stockfish.wait ~pause:Troupe.sleep engine)));
+                    let result =
+                      Stockfish.search
+                        ~pause:Troupe.sleep
+                        ~skill:(skill_level game.difficulty)
+                        ~movetime:1000
+                        engine
+                        game.state
+                    in
+                    let closed = Stockfish.close ~pause:Troupe.sleep engine in
+                    process := None;
+                    (match result, closed with
+                     | Error error, _ | _, Error error -> Error error
+                     | Ok _, Ok status when status <> Unix.WEXITED 0 ->
+                       Error "Stockfish exited unsuccessfully."
+                     | Ok result, Ok _ ->
+                       (match result.bestmove with
+                        | Some move -> Ok move
+                        | None -> Error "Stockfish returned no move."))
+                in
+                dispatch (Engine_result (game.state, result))))
+          in
+          Sub.batch [ keys; shake; engine ]
         | _ -> keys)
   }
+;;
+
+let app =
+  let executable =
+    match Sys.getenv_opt "CARAVAN_STOCKFISH" with
+    | Some path -> path
+    | None ->
+      let bundled = "caravan/bin/stockfish/stockfish" in
+      if Sys.file_exists bundled then bundled else "stockfish"
+  in
+  make_app ~executable
 ;;

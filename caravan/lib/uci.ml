@@ -6,6 +6,8 @@ type command =
   | Ucinewgame
   | Position of move list
   | Position_state of State.t
+  | Skill_level of int
+  | Limit_strength of bool
   | Go_movetime of int
   | Stop
   | Quit
@@ -181,6 +183,11 @@ let command_to_string = function
     Ok
       ("position startpos moves "
        ^ String.concat " " (List.map move_to_string moves))
+  | Skill_level level when level >= 0 && level <= 20 ->
+    Ok (Printf.sprintf "setoption name Skill Level value %d" level)
+  | Skill_level _ -> Error "Skill Level must be between 0 and 20."
+  | Limit_strength enabled ->
+    Ok ("setoption name UCI_LimitStrength value " ^ string_of_bool enabled)
   | Go_movetime milliseconds when milliseconds > 0 ->
     Ok (Printf.sprintf "go movetime %d" milliseconds)
   | Go_movetime _ -> Error "Search time must be positive."

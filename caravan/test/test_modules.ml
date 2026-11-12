@@ -88,6 +88,20 @@ let player_state () =
 
 let uci () =
   List.iter
+    (fun level ->
+       Alcotest.(check string)
+         "skill option"
+         (Printf.sprintf "setoption name Skill Level value %d" level)
+         (unwrap (Uci.command_to_string (Uci.Skill_level level))))
+    [ 0; 5; 10 ];
+  List.iter
+    (fun level ->
+       Alcotest.(check bool)
+         "invalid skill rejected"
+         true
+         (Result.is_error (Uci.command_to_string (Uci.Skill_level level))))
+    [ -1; 21 ];
+  List.iter
     (fun text ->
        Alcotest.(check string)
          "move round trip"
