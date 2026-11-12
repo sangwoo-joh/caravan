@@ -5,6 +5,7 @@ type command =
   | Isready
   | Ucinewgame
   | Position of move list
+  | Position_state of State.t
   | Go_movetime of int
   | Stop
   | Quit
@@ -69,22 +70,6 @@ let move_to_string (move : move) =
   square_name move.from_square ^ square_name move.to_square ^ promotion
 ;;
 
-let command_to_string = function
-  | Uci -> Ok "uci"
-  | Isready -> Ok "isready"
-  | Ucinewgame -> Ok "ucinewgame"
-  | Position [] -> Ok "position startpos"
-  | Position moves ->
-    Ok
-      ("position startpos moves "
-       ^ String.concat " " (List.map move_to_string moves))
-  | Go_movetime milliseconds when milliseconds > 0 ->
-    Ok (Printf.sprintf "go movetime %d" milliseconds)
-  | Go_movetime _ -> Error "Search time must be positive."
-  | Stop -> Ok "stop"
-  | Quit -> Ok "quit"
-;;
-
 let response_of_string line =
   let line = String.trim line in
   let words =
@@ -106,4 +91,92 @@ let response_of_string line =
   | "bestmove" :: _ -> Error "Malformed bestmove response."
   | "info" :: _ -> Ok (Info line)
   | _ -> Ok (Other line)
+;;
+
+let fen state =
+  let piece_letter (piece : Piece.t) =
+    let letter =
+      match piece.kind with
+      | Pawn -> 'p'
+      | Knight -> 'n'
+      | Bishop -> 'b'
+      | Rook -> 'r'
+      | Queen -> 'q'
+      | King -> 'k'
+    in
+    if piece.colour = Piece.White then Char.uppercase_ascii letter else letter
+  in
+  let rank row =
+    let buffer = Buffer.create 8
+    and empty = ref 0 in
+    let flush () =
+      if !empty > 0 then Buffer.add_string buffer (string_of_int !empty);
+      empty := 0
+    in
+    for file = 0 to 7 do
+      match State.piece_at state ((row * 8) + file) with
+      | None -> incr empty
+      | Some piece ->
+        flush ();
+        Buffer.add_char buffer (piece_letter piece)
+    done;
+    flush ();
+    Buffer.contents buffer
+  in
+  let rights =
+    [ Piece.White, State.Kingside, "K"
+    ; White, Queenside, "Q"
+    ; Black, Kingside, "k"
+    ; Black, Queenside, "q"
+    ]
+    |> List.filter_map (fun (colour, side, text) ->
+      if State.can_castle state colour side then Some text else None)
+    |> String.concat ""
+  in
+  Printf.sprintf
+    "%s %s %s %s %d %d"
+    (String.concat "/" (List.init 8 rank))
+    (if State.turn state = Piece.White then "w" else "b")
+    (if rights = "" then "-" else rights)
+    (match State.en_passant state with
+     | None -> "-"
+     | Some square -> square_name square)
+    (State.halfmove_clock state)
+    (State.fullmove_number state)
+;;
+
+let position_command state =
+  let rec root state =
+    match State.previous state with
+    | None -> state
+    | Some previous -> root previous
+  in
+  let position = "position fen " ^ fen (root state) in
+  match State.moves state with
+  | [] -> position
+  | moves ->
+    position ^ " moves " ^ String.concat " " (List.map move_to_string moves)
+;;
+
+let prepare_move state input =
+  match move_of_string (String.trim input) with
+  | Error error -> Error error
+  | Ok move -> Logic.play state move
+;;
+
+let command_to_string = function
+  | Uci -> Ok "uci"
+  | Isready -> Ok "isready"
+  | Ucinewgame -> Ok "ucinewgame"
+  | Position_state state -> Ok (position_command state)
+  | Position [] -> Ok "position startpos"
+  | Position moves ->
+    Ok
+      ("position startpos moves "
+       ^ String.concat " " (List.map move_to_string moves))
+  | Go_movetime milliseconds when milliseconds > 0 ->
+    Ok (Printf.sprintf "go movetime %d" milliseconds)
+  | Go_movetime _ -> Error "Search time must be positive."
+  | Stop -> Ok "stop"
+  | Quit -> Ok "quit"
 ;;
