@@ -18,6 +18,74 @@ let state () =
   Alcotest.(check int) "pawn value" 100 (Logic.material_value Piece.Pawn)
 ;;
 
+let player_state () =
+  let start = State.initial () in
+  Alcotest.(check bool)
+    "white by default"
+    true
+    (State.user_colour start = Piece.White);
+  Alcotest.(check bool)
+    "thinking by default"
+    true
+    (State.action start = State.Think);
+  let picked = unwrap (State.pick start 52) in
+  Alcotest.(check bool)
+    "selected square"
+    true
+    (State.action picked = State.Pick 52);
+  Alcotest.(check bool)
+    "old snapshot unchanged"
+    true
+    (State.action start = State.Think);
+  List.iter
+    (fun square ->
+       Alcotest.(check bool)
+         "selection rejected"
+         true
+         (Result.is_error (State.pick start square)))
+    [ 12; 28; -1; 64 ];
+  Alcotest.(check bool)
+    "UCI rejected while picking"
+    true
+    (Result.is_error (Uci.prepare_move picked "e2e4"));
+  let thinking = State.think picked in
+  let next = unwrap (Uci.prepare_move thinking "e2e4") in
+  Alcotest.(check bool)
+    "opponent move rejected even on opponent turn"
+    true
+    (Result.is_error (Uci.prepare_move next "e7e5"));
+  let moved = unwrap (Logic.play picked (unwrap (Uci.move_of_string "e2e4"))) in
+  Alcotest.(check bool)
+    "move restores think"
+    true
+    (State.action moved = State.Think);
+  let black = State.initial ~user_colour:Piece.Black () in
+  Alcotest.(check bool)
+    "colour does not change turn"
+    true
+    (State.turn black = Piece.White);
+  Alcotest.(check bool)
+    "black can select black piece"
+    true
+    (Result.is_ok (State.pick black 12));
+  Alcotest.(check bool)
+    "black cannot select white piece"
+    true
+    (Result.is_error (State.pick black 52));
+  let black_turn =
+    unwrap (Logic.play black (unwrap (Uci.move_of_string "e2e4")))
+  in
+  let after_black = unwrap (Uci.prepare_move black_turn "e7e5") in
+  Alcotest.(check bool)
+    "colour survives moves"
+    true
+    (State.user_colour after_black = Piece.Black);
+  Alcotest.(check bool)
+    "action after moves"
+    true
+    (State.action after_black = State.Think)
+;;
+
 let uci () =
   List.iter
     (fun text ->
@@ -175,7 +243,9 @@ let engine_pipeline () =
      | Error error -> error = "The piece cannot move to that square."
      | Ok _ -> false);
   let before_mate =
-    Test_logic.sequence (State.initial ()) [ "f2f3"; "e7e5"; "g2g4" ]
+    Test_logic.sequence
+      (State.initial ~user_colour:Piece.Black ())
+      [ "f2f3"; "e7e5"; "g2g4" ]
   in
   let result =
     unwrap (Stockfish.play_input ~executable:missing before_mate "d8h4")
@@ -235,6 +305,7 @@ let () =
     "modules"
     ([ ( "core"
        , [ Alcotest.test_case "initial state" `Quick state
+         ; Alcotest.test_case "player state" `Quick player_state
          ; Alcotest.test_case "UCI" `Quick uci
          ; Alcotest.test_case "prepare input" `Quick prepare_input
          ; Alcotest.test_case "engine pipeline" `Quick engine_pipeline

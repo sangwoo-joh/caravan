@@ -8,9 +8,15 @@ type castle_side =
   | Kingside
   | Queenside
 
+type action =
+  | Think
+  | Pick of int
+
 type t =
   { board : Piece.t option array
   ; turn : Piece.colour
+  ; user_colour : Piece.colour
+  ; action : action
   ; castling_rights : (Piece.colour * castle_side) list
   ; en_passant : int option
   ; halfmove_clock : int
@@ -30,6 +36,7 @@ let move ?promotion from_square to_square =
 ;;
 
 let create
+      ?(user_colour = Piece.White)
       ?(castling_rights = [])
       ?en_passant
       ?(halfmove_clock = 0)
@@ -92,6 +99,8 @@ let create
     Ok
       { board = Array.copy board
       ; turn
+      ; user_colour
+      ; action = Think
       ; castling_rights = List.sort_uniq compare castling_rights
       ; en_passant
       ; halfmove_clock
@@ -101,7 +110,7 @@ let create
       }
 ;;
 
-let initial () =
+let initial ?(user_colour = Piece.White) () =
   let open Piece in
   let back_rank =
     [| Rook; Knight; Bishop; Queen; King; Bishop; Knight; Rook |]
@@ -119,6 +128,8 @@ let initial () =
   in
   { board
   ; turn = White
+  ; user_colour
+  ; action = Think
   ; castling_rights =
       [ White, Kingside; White, Queenside; Black, Kingside; Black, Queenside ]
   ; en_passant = None
@@ -131,6 +142,21 @@ let initial () =
 
 let piece_at state square = state.board.(square)
 let turn state = state.turn
+let user_colour state = state.user_colour
+let action state = state.action
+let think state = { state with action = Think }
+
+let pick state square =
+  if square < 0 || square >= 64
+  then Error "Square must be between 0 and 63."
+  else (
+    match state.board.(square) with
+    | None -> Error "Select a square containing your piece."
+    | Some piece when piece.colour <> state.user_colour ->
+      Error "You can only select your own pieces."
+    | Some _ -> Ok { state with action = Pick square })
+;;
+
 let castling_rights state = state.castling_rights
 let can_castle state colour side = List.mem (colour, side) state.castling_rights
 let en_passant state = state.en_passant
@@ -159,6 +185,8 @@ let advance_unchecked
   List.iter (fun (square, piece) -> board.(square) <- piece) changes;
   { board
   ; turn = (if state.turn = Piece.White then Piece.Black else Piece.White)
+  ; user_colour = state.user_colour
+  ; action = Think
   ; castling_rights
   ; en_passant
   ; halfmove_clock

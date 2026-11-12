@@ -159,9 +159,16 @@ let position_command state =
 ;;
 
 let prepare_move state input =
-  match move_of_string (String.trim input) with
-  | Error error -> Error error
-  | Ok move -> Logic.play state move
+  match State.action state with
+  | Pick _ ->
+    Error "Finish placing your selected piece before entering a UCI move."
+  | Think ->
+    (match move_of_string (String.trim input) with
+     | Error error -> Error error
+     | Ok move ->
+       (match State.pick state move.from_square with
+        | Error error -> Error error
+        | Ok _ -> Logic.play state move))
 ;;
 
 let command_to_string = function

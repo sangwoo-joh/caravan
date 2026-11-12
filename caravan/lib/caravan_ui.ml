@@ -18,7 +18,6 @@ type focus =
 type game =
   { state : State.t
   ; square : int
-  ; selected : int option
   ; input : string
   ; move : string option
   ; focus : focus
@@ -33,18 +32,23 @@ type screen =
 type model =
   { screen : screen
   ; difficulty : difficulty
+  ; user_colour : Piece.colour
   ; saved : game option
   ; notice : string
   }
 
 let initial =
-  { screen = Landing 0; difficulty = Normal; saved = None; notice = "" }
+  { screen = Landing 0
+  ; difficulty = Normal
+  ; user_colour = Piece.White
+  ; saved = None
+  ; notice = ""
+  }
 ;;
 
-let new_game () =
-  { state = State.initial ()
-  ; square = 52
-  ; selected = None
+let new_game user_colour =
+  { state = State.initial ~user_colour ()
+  ; square = (if user_colour = Piece.White then 52 else 12)
   ; input = ""
   ; move = None
   ; focus = Board
@@ -68,10 +72,30 @@ let confirm = function
 let preview game move =
   { game with
     move = Some move
-  ; selected = None
+  ; state = State.think game.state
   ; input = ""
   ; notice = "Move preview only; engine and legal moves are not connected."
   }
+;;
+
+let select_or_place game =
+  match State.action game.state with
+  | Think ->
+    (match State.pick game.state game.square with
+     | Error notice -> { game with notice }
+     | Ok state ->
+       { game with
+         state
+       ; input = ""
+       ; notice = "Choose a destination; select the same square to cancel."
+       })
+  | Pick square when square = game.square ->
+    { game with
+      state = State.think game.state
+    ; notice = "Selection cancelled."
+    }
+  | Pick square ->
+    preview game (Uci.square_name square ^ Uci.square_name game.square)
 ;;
 
 let board_key key game =
@@ -83,22 +107,20 @@ let board_key key game =
   | Event.Left -> { game with square = (row * 8) + max 0 (col - 1) }
   | Event.Right when col = 7 -> { game with focus = Save }
   | Event.Right -> { game with square = game.square + 1 }
-  | Event.Backspace ->
+  | Event.Backspace when State.action game.state = Think ->
     let n = String.length game.input in
     { game with input = String.sub game.input 0 (max 0 (n - 1)) }
-  | key when confirm key ->
-    if game.input <> ""
-    then
-      if Result.is_ok (Uci.move_of_string game.input)
-      then preview game game.input
-      else { game with notice = "Use a move such as e2e4 or e7e8q." }
-    else (
-      match game.selected with
-      | None -> { game with selected = Some game.square }
-      | Some square when square = game.square -> { game with selected = None }
-      | Some square ->
-        preview game (Uci.square_name square ^ Uci.square_name game.square))
-  | Event.Char c when String.contains "abcdefgh12345678qrbn" c ->
+  | Event.Enter when State.action game.state = Think && game.input <> "" ->
+    (match Uci.move_of_string game.input with
+     | Error notice -> { game with notice }
+     | Ok move ->
+       (match State.pick game.state move.from_square with
+        | Error notice -> { game with notice }
+        | Ok _ -> preview game (Uci.move_to_string move)))
+  | key when confirm key -> select_or_place game
+  | Event.Char c
+    when State.action game.state = Think
+         && String.contains "abcdefgh12345678qrbn" c ->
     if String.length game.input < 5
     then { game with input = game.input ^ String.make 1 c }
     else game
@@ -120,7 +142,11 @@ let update key model =
          | key when confirm key ->
            (match cursor with
             | 0 ->
-              { model with screen = Play (new_game ()); notice = "" }, false
+              ( { model with
+                  screen = Play (new_game model.user_colour)
+                ; notice = ""
+                }
+              , false )
             | 1 ->
               (match model.saved with
                | Some game ->
@@ -154,11 +180,17 @@ let update key model =
          | Event.Up ->
            { model with screen = Setting (max 0 (cursor - 1)) }, false
          | Event.Down ->
-           { model with screen = Setting (min 3 (cursor + 1)) }, false
+           { model with screen = Setting (min 5 (cursor + 1)) }, false
          | key when confirm key ->
-           if cursor = 3
+           if cursor = 5
            then { model with screen = Landing 2 }, false
-           else { model with difficulty = difficulties.(cursor) }, false
+           else if cursor < 3
+           then { model with difficulty = difficulties.(cursor) }, false
+           else
+             ( { model with
+                 user_colour = (if cursor = 3 then Piece.White else Piece.Black)
+               }
+             , false )
          | _ -> model, false)
       | Play game ->
         (match game.focus, key with
@@ -218,7 +250,7 @@ let landing cursor notice =
   ^ "\n  Up/Down: choose   Enter/Space: confirm   Ctrl+C: quit\n"
 ;;
 
-let setting cursor difficulty =
+let setting cursor difficulty user_colour =
   "\n  Caravan / Setting\n\n  Difficulty\n\n"
   ^ String.concat
       "\n"
@@ -227,66 +259,94 @@ let setting cursor difficulty =
            (cursor = i)
            ((if difficulty = difficulties.(i) then "(*) " else "( ) ")
             ^ difficulty_name difficulties.(i)))
-       @ [ ""; menu_item (cursor = 3) "Back" ])
-  ^ "\n\n  Difficulty will apply when the engine is connected."
+       @ [ ""
+         ; "  Your pieces"
+         ; menu_item
+             (cursor = 3)
+             ((if user_colour = Piece.White then "(*) " else "( ) ") ^ "White")
+         ; menu_item
+             (cursor = 4)
+             ((if user_colour = Piece.Black then "(*) " else "( ) ") ^ "Black")
+         ; ""
+         ; menu_item (cursor = 5) "Back"
+         ])
+  ^ "\n\n  Piece colour applies to new games."
   ^ "\n\n  Up/Down: choose   Enter/Space: confirm   Ctrl+C: quit\n"
 ;;
 
 let play game difficulty =
+  let selected =
+    match State.action game.state with
+    | Think -> None
+    | Pick square -> Some square
+  in
   let side row =
     match row with
     | 0 -> "  Difficulty: " ^ difficulty_name difficulty
-    | 1 -> "  White: You   Black: Stockfish"
+    | 1 ->
+      if State.user_colour game.state = Piece.White
+      then "  White: You   Black: Stockfish"
+      else "  White: Stockfish   Black: You"
+    | 2 ->
+      "  Action: "
+      ^
+        (match State.action game.state with
+        | Think -> "think"
+        | Pick _ -> "pick")
     | 3 -> menu_item (game.focus = Save) "[ Save ]"
     | 4 -> menu_item (game.focus = Main_menu) "[ Main menu ]"
     | 6 -> "  Engine: not connected"
+    | 7 -> "  [ ] cursor   { } picked"
     | _ -> ""
   in
+  let border = "     +---+---+---+---+---+---+---+---+" in
+  let files = "       a   b   c   d   e   f   g   h" in
   let rows =
-    List.init 8 (fun row ->
-      let cells =
-        List.init 8 (fun col ->
-          let square = (row * 8) + col in
-          let figure =
-            match State.piece_at game.state square with
-            | Some piece -> piece.figure
-            | None -> "."
-          in
-          if game.focus = Board && game.square = square
-          then Printf.sprintf "[%s]" figure
-          else if game.selected = Some square
-          then Printf.sprintf "{%s}" figure
-          else Printf.sprintf " %s " figure)
-      in
-      Printf.sprintf
-        "  %d  %s  %d%s"
-        (8 - row)
-        (String.concat "" cells)
-        (8 - row)
-        (side row))
+    List.concat
+      (List.init 8 (fun row ->
+         let cells =
+           List.init 8 (fun col ->
+             let square = (row * 8) + col in
+             let figure =
+               match State.piece_at game.state square with
+               | Some piece -> piece.figure
+               | None -> " "
+             in
+             if selected = Some square
+             then Printf.sprintf "{%s}" figure
+             else if game.focus = Board && game.square = square
+             then Printf.sprintf "[%s]" figure
+             else Printf.sprintf " %s " figure)
+         in
+         [ Printf.sprintf
+             "  %d  |%s| %d%s"
+             (8 - row)
+             (String.concat "|" cells)
+             (8 - row)
+             (side row)
+         ; border
+         ]))
   in
-  "\n  Caravan / Play\n\n      a  b  c  d  e  f  g  h\n"
-  ^ String.concat "\n" rows
-  ^ "\n      a  b  c  d  e  f  g  h\n\n"
-  ^ "  UCI move: "
-  ^ game.input
-  ^ "_\n"
-  ^ "  Last preview: "
-  ^ Option.value game.move ~default:"-"
-  ^ "\n"
-  ^ "  "
-  ^ game.notice
-  ^ "\n\n"
-  ^ "  Arrows: move; Right from h-file: buttons; Left: board\n"
-  ^ "  Enter/Space: select/place   Type: UCI   Backspace: edit\n"
-  ^ "  Select the same square again to cancel. Ctrl+C: quit\n"
+  String.concat
+    "\n"
+    ([ "  Caravan / Play"; files; border ]
+     @ rows
+     @ [ files
+       ; "  UCI move: "
+         ^ game.input
+         ^ "_    Last preview: "
+         ^ Option.value game.move ~default:"-"
+       ; "  " ^ game.notice
+       ; "  Arrows: move; Right at h-file: menu; Left: board; Ctrl+C: quit"
+       ; "  Enter: UCI/select/place; Space: select/place; Backspace: edit"
+       ])
 ;;
 
 let view model =
   match model.screen with
   | Landing cursor -> landing cursor model.notice
   | Play game -> play game model.difficulty
-  | Setting cursor -> setting cursor model.difficulty
+  | Setting cursor -> setting cursor model.difficulty model.user_colour
 ;;
 
 let app =
