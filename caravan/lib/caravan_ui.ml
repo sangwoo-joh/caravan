@@ -162,15 +162,23 @@ let select_or_place game =
      | Ok move -> place game move)
 ;;
 
+let orient state square =
+  if State.user_colour state = Piece.White then square else 63 - square
+;;
+
 let board_key key game =
-  let row = game.square / 8
-  and col = game.square mod 8 in
+  let displayed = orient game.state game.square in
+  let row = displayed / 8
+  and col = displayed mod 8 in
+  let move_cursor displayed =
+    { game with square = orient game.state displayed }
+  in
   match key with
-  | Event.Up -> { game with square = (max 0 (row - 1) * 8) + col }
-  | Event.Down -> { game with square = (min 7 (row + 1) * 8) + col }
-  | Event.Left -> { game with square = (row * 8) + max 0 (col - 1) }
+  | Event.Up -> move_cursor ((max 0 (row - 1) * 8) + col)
+  | Event.Down -> move_cursor ((min 7 (row + 1) * 8) + col)
+  | Event.Left -> move_cursor ((row * 8) + max 0 (col - 1))
   | Event.Right when col = 7 -> { game with focus = Save }
-  | Event.Right -> { game with square = game.square + 1 }
+  | Event.Right -> move_cursor (displayed + 1)
   | Event.Backspace when State.action game.state = Think ->
     let n = String.length game.input in
     { game with input = String.sub game.input 0 (max 0 (n - 1)) }
@@ -375,13 +383,17 @@ let play game difficulty =
     | _ -> ""
   in
   let border = "     +---+---+---+---+---+---+---+---+" in
-  let files = "       a   b   c   d   e   f   g   h" in
+  let files =
+    if State.user_colour game.state = Piece.White
+    then "       a   b   c   d   e   f   g   h"
+    else "       h   g   f   e   d   c   b   a"
+  in
   let rows =
     List.concat
       (List.init 8 (fun row ->
          let cells =
            List.init 8 (fun col ->
-             let square = (row * 8) + col in
+             let square = orient game.state ((row * 8) + col) in
              let figure =
                match State.piece_at game.state square with
                | Some piece -> piece.figure
@@ -395,9 +407,9 @@ let play game difficulty =
          in
          [ Printf.sprintf
              "  %d  |%s| %d%s"
-             (8 - row)
+             (8 - (orient game.state (row * 8) / 8))
              (String.concat "|" cells)
-             (8 - row)
+             (8 - (orient game.state (row * 8) / 8))
              (side row)
          ; border
          ]))
@@ -418,7 +430,7 @@ let play game difficulty =
          ^ "_    Last move: "
          ^ Option.value game.move ~default:"-"
        ; "  " ^ game.notice
-       ; "  Arrows: move; Right at h-file: menu; Left: board; Ctrl+C: quit"
+       ; "  Arrows: move; Right edge: menu; Left: board; Ctrl+C: quit"
        ; "  Enter: UCI/select/place; Space: select/place; Backspace: edit"
        ])
 ;;

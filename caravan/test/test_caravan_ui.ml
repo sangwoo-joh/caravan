@@ -270,14 +270,14 @@ let piece_colour () =
   shows black "White: Stockfish   Black: You";
   shows black "|[♟]|";
   shows (step black Event.Enter) "It is not your turn.";
-  let opponent = step (repeat Event.Down 5 black) Event.Enter in
+  let opponent = step (repeat Event.Up 5 black) Event.Enter in
   shows opponent "You can only select your own pieces.";
   shows opponent "Action: think";
   let rejected = step (type_input black "e2e4") Event.Enter in
   shows rejected "You can only select your own pieces.";
   shows (step (type_input black "e7e5") Event.Enter) "Cannot place there:";
   let saved =
-    repeat Event.Right 4 black |> fun model -> step model Event.Enter
+    repeat Event.Right 5 black |> fun model -> step model Event.Enter
   in
   let landing = List.fold_left step saved [ Event.Down; Event.Enter ] in
   let white =
@@ -499,6 +499,44 @@ let shake () =
     (marked settled)
 ;;
 
+let black_orientation () =
+  let black = black_game () in
+  shows black "h   g   f   e   d   c   b   a";
+  shows black "  1  | ♖ | ♘ | ♗ | ♔ | ♕ | ♗ | ♘ | ♖ | 1";
+  shows black "  8  | ♜ | ♞ | ♝ | ♚ | ♛ | ♝ | ♞ | ♜ | 8";
+  Alcotest.(check string) "black cursor starts on e7" "[♟]" (cell black 51);
+  let right_edge = repeat Event.Right 5 black in
+  shows right_edge "> [ Save ]";
+  let back = step right_edge Event.Left in
+  Alcotest.(check string) "menu returns to a7" "[♟]" (cell back 55);
+  let state = Caravan_ui.State.initial ~user_colour:Black () in
+  let white_move =
+    match Caravan_ui.Uci.move_of_string "e2e4" with
+    | Ok move -> move
+    | Error error -> Alcotest.fail error
+  in
+  let state =
+    match Caravan_ui.Logic.play state white_move with
+    | Ok state -> state
+    | Error error -> Alcotest.fail error
+  in
+  let model = Caravan_ui.start_game state in
+  let picked = step model Event.Enter in
+  Alcotest.(check (list int))
+    "black pawn targets point upward"
+    [ 35; 43 ]
+    (marked picked);
+  let moved = List.fold_left step picked [ Event.Up; Event.Up; Event.Enter ] in
+  shows moved "Last move: e7e5";
+  shows moved "Turn: White";
+  Alcotest.(check string) "black pawn placed at e5" "[♟]" (cell moved 35);
+  Alcotest.(check string) "e7 cleared" "   " (cell moved 51);
+  let left = step model Event.Left in
+  Alcotest.(check string) "left goes toward f-file" "[♟]" (cell left 50);
+  let down = step model Event.Down in
+  Alcotest.(check string) "down goes toward rank 8" "[♚]" (cell down 59)
+;;
+
 let frame_size () =
   List.iter
     (fun model ->
@@ -545,6 +583,7 @@ let () =
         ; Alcotest.test_case "captures" `Quick capture
         ; Alcotest.test_case "promotion" `Quick promotion
         ; Alcotest.test_case "invalid placement shake" `Quick shake
+        ; Alcotest.test_case "black orientation" `Quick black_orientation
         ; Alcotest.test_case "terminal size" `Quick frame_size
         ] )
     ]
