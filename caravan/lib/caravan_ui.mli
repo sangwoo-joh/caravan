@@ -13,7 +13,7 @@ type model
 val initial : model
 
 (** [update key model] is the state and command after [key]. Ctrl+C requests
-    termination. Moves are previews and saves last only for the current run. *)
+    termination. Legal moves update the board. Saves last only for the current run. *)
 val update
   :  Theaterminal.Event.key
   -> model
@@ -22,5 +22,11 @@ val update
 (** [view model] is the terminal frame for [model]. *)
 val view : model -> string
 
-(** [app] is the interactive Caravan screen prototype. *)
-val app : (model, Theaterminal.Event.key) Theaterminal.app
+type message =
+  | Key of Theaterminal.Event.key
+  | Shake_tick
+
+val start_game : State.t -> model
+
+(** [app] is the interactive Caravan game. *)
+val app : (model, message) Theaterminal.app

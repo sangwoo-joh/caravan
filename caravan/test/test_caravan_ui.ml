@@ -68,12 +68,13 @@ let settings () =
     (quit model (Event.Unknown "\003"))
 ;;
 
-let move_preview () =
+let piece_movement () =
   let model =
     steps [ Event.Enter; Event.Enter; Event.Up; Event.Up; Event.Char ' ' ]
   in
-  shows model "Last preview: e2e4";
-  shows model "Move preview only";
+  shows model "Last move: e2e4";
+  shows model "Moved e2e4.";
+  shows model "Turn: Black";
   let model =
     List.fold_left
       step
@@ -87,10 +88,10 @@ let move_preview () =
       ; Event.Enter
       ]
   in
-  shows model "Last preview: e2e4";
+  shows model "Last move: e2e4";
   let model = List.fold_left step model [ Event.Char 'e'; Event.Enter ] in
   shows model "Use a move such as e2e4";
-  shows model "Last preview: e2e4"
+  shows model "Last move: e2e4"
 ;;
 
 let save_load () =
@@ -111,7 +112,7 @@ let save_load () =
       ; Event.Enter
       ]
   in
-  shows model "Last preview: -";
+  shows model "Last move: -";
   let model =
     List.fold_left
       step
@@ -126,7 +127,7 @@ let save_load () =
       ; Event.Enter
       ]
   in
-  shows model "Last preview: e2e4";
+  shows model "Last move: e2e4";
   shows model "Loaded the latest session save";
   let model =
     List.fold_left
@@ -145,7 +146,7 @@ let save_load () =
       ; Event.Enter
       ]
   in
-  shows model "Last preview: d2d4"
+  shows model "Last move: e2e4"
 ;;
 
 let pieces () =
@@ -229,7 +230,7 @@ let selection () =
     (Caravan_ui.view ignored);
   let placed = step (step picked Event.Up) Event.Enter in
   shows placed "Action: think";
-  shows placed "Last preview: e2e3";
+  shows placed "Last move: e2e3";
   shows (type_input placed "d2") "UCI move: d2_";
   let cancelled = step picked (Event.Char ' ') in
   shows cancelled "Action: think";
@@ -237,11 +238,11 @@ let selection () =
   shows (type_input cancelled "e2") "UCI move: e2_";
   let rejected = step (type_input start "e7e5") Event.Enter in
   shows rejected "You can only select your own pieces.";
-  shows rejected "Last preview: -";
+  shows rejected "Last move: -";
   shows rejected "Action: think";
   let empty_input = step (type_input start "e3e4") Event.Enter in
   shows empty_input "Select a square containing your piece.";
-  shows empty_input "Last preview: -"
+  shows empty_input "Last move: -"
 ;;
 
 let black_game () =
@@ -268,13 +269,13 @@ let piece_colour () =
   let black = black_game () in
   shows black "White: Stockfish   Black: You";
   shows black "|[♟]|";
-  shows (step black Event.Enter) "Action: pick";
+  shows (step black Event.Enter) "It is not your turn.";
   let opponent = step (repeat Event.Down 5 black) Event.Enter in
   shows opponent "You can only select your own pieces.";
   shows opponent "Action: think";
   let rejected = step (type_input black "e2e4") Event.Enter in
   shows rejected "You can only select your own pieces.";
-  shows (step (type_input black "e7e5") Event.Enter) "Last preview: e7e5";
+  shows (step (type_input black "e7e5") Event.Enter) "Cannot place there:";
   let saved =
     repeat Event.Right 4 black |> fun model -> step model Event.Enter
   in
@@ -307,7 +308,7 @@ let piece_colour () =
       [ Event.Down; Event.Enter; Event.Down; Event.Enter ]
   in
   shows loaded "White: Stockfish   Black: You";
-  shows (step loaded Event.Enter) "Action: pick"
+  shows (step loaded Event.Enter) "It is not your turn."
 ;;
 
 let board_boxes () =
@@ -334,6 +335,170 @@ let board_boxes () =
     rows
 ;;
 
+let cell model square =
+  let row = square / 8
+  and col = square mod 8 in
+  let rows =
+    String.split_on_char '\n' (Caravan_ui.view model)
+    |> List.filter (fun line -> String.contains line '|')
+  in
+  List.nth (String.split_on_char '|' (List.nth rows row)) (col + 1)
+;;
+
+let move_cursor model source target =
+  let vertical = (target / 8) - (source / 8)
+  and horizontal = (target mod 8) - (source mod 8) in
+  model
+  |> repeat (if vertical < 0 then Event.Up else Event.Down) (abs vertical)
+  |> repeat
+       (if horizontal < 0 then Event.Left else Event.Right)
+       (abs horizontal)
+;;
+
+let marked model =
+  List.init 64 Fun.id
+  |> List.filter (fun square -> String.contains (cell model square) 'x')
+;;
+
+let fixture ?en_passant pieces =
+  let board = Array.make 64 None in
+  List.iter
+    (fun (square, kind, colour) ->
+       board.(square) <- Some (Caravan_ui.Piece.make_piece kind colour))
+    pieces;
+  match Caravan_ui.State.create ?en_passant ~turn:White board with
+  | Ok state -> Caravan_ui.start_game state
+  | Error error -> Alcotest.fail error
+;;
+
+let destinations () =
+  let picked = steps [ Event.Enter; Event.Enter ] in
+  Alcotest.(check (list int)) "pawn forward squares" [ 36; 44 ] (marked picked);
+  let invalid = step (move_cursor picked 52 28) Event.Enter in
+  shows invalid "Cannot place there:";
+  shows invalid "Action: pick";
+  shows invalid "Turn: White";
+  shows invalid "Last move: -";
+  Alcotest.(check (list int))
+    "invalid placement keeps targets"
+    [ 36; 44 ]
+    (marked invalid);
+  Alcotest.(check string) "pawn stays at source" "{♙}" (cell invalid 52);
+  let placed = step (move_cursor invalid 28 36) Event.Enter in
+  shows placed "Moved e2e4.";
+  shows placed "Turn: Black";
+  shows placed "Action: think";
+  Alcotest.(check (list int))
+    "targets cleared after placement"
+    []
+    (marked placed);
+  Alcotest.(check string) "source cleared" "   " (cell placed 52);
+  Alcotest.(check string) "pawn placed" "[♙]" (cell placed 36);
+  shows (step placed Event.Enter) "It is not your turn.";
+  let cancelled = step picked Event.Enter in
+  Alcotest.(check (list int)) "cancel clears targets" [] (marked cancelled);
+  let knight =
+    steps [ Event.Enter; Event.Down; Event.Right; Event.Right; Event.Enter ]
+  in
+  Alcotest.(check (list int))
+    "knight jumps over pieces"
+    [ 45; 47 ]
+    (marked knight);
+  let pinned =
+    fixture [ 60, King, White; 0, King, Black; 52, Rook, White; 4, Rook, Black ]
+    |> fun model -> step model Event.Enter
+  in
+  Alcotest.(check (list int))
+    "pinned rook cannot expose king"
+    [ 12; 20; 28; 36; 44 ]
+    (marked pinned)
+;;
+
+let capture () =
+  let start =
+    fixture
+      [ 56, King, White; 7, King, Black; 52, Pawn, White; 43, Rook, Black ]
+  in
+  let picked = step start Event.Enter in
+  Alcotest.(check string)
+    "capture target keeps enemy figure"
+    " ♜ "
+    (cell picked 43);
+  Alcotest.(check (list int))
+    "only empty destinations marked"
+    [ 36; 44 ]
+    (marked picked);
+  let captured = step (move_cursor picked 52 43) Event.Enter in
+  shows captured "Captured opponent's rook.";
+  shows captured "Turn: Black";
+  shows captured "Action: think";
+  Alcotest.(check string) "captured rook replaced" "[♙]" (cell captured 43);
+  Alcotest.(check string) "source cleared" "   " (cell captured 52);
+  Alcotest.(check (list int)) "capture clears markers" [] (marked captured);
+  let typed = step (type_input start "e2d3") Event.Enter in
+  shows typed "Captured opponent's rook.";
+  Alcotest.(check string) "typed capture applied" " ♙ " (cell typed 43);
+  let ep =
+    fixture
+      ~en_passant:19
+      [ 56, King, White; 7, King, Black; 28, Pawn, White; 27, Pawn, Black ]
+  in
+  let picked = step (move_cursor ep 52 28) Event.Enter in
+  Alcotest.(check bool)
+    "empty en passant target marked"
+    true
+    (List.mem 19 (marked picked));
+  let captured = step (move_cursor picked 28 19) Event.Enter in
+  shows captured "Captured opponent's pawn.";
+  Alcotest.(check string) "en passant victim removed" "   " (cell captured 27);
+  Alcotest.(check string) "en passant pawn placed" "[♙]" (cell captured 19)
+;;
+
+let promotion () =
+  let start = fixture [ 56, King, White; 7, King, Black; 12, Pawn, White ] in
+  let picked = step (move_cursor start 52 12) Event.Enter in
+  let promoted = step (step picked Event.Up) Event.Enter in
+  shows promoted "Last move: e7e8q";
+  Alcotest.(check string)
+    "click promotion defaults to queen"
+    "[♕]"
+    (cell promoted 4);
+  let typed = step (type_input start "e7e8n") Event.Enter in
+  Alcotest.(check string) "typed underpromotion" " ♘ " (cell typed 4)
+;;
+
+let shake () =
+  let picked = steps [ Event.Enter; Event.Enter ] in
+  let rejected = step (step picked Event.Left) Event.Enter in
+  let has_timer model =
+    List.exists
+      (fun (_, source) ->
+         match source with
+         | Sub.Every _ -> true
+         | _ -> false)
+      (Sub.leaves (Caravan_ui.app.subscriptions model))
+  in
+  Alcotest.(check bool)
+    "invalid placement starts timer"
+    true
+    (has_timer rejected);
+  let tick model = fst (Caravan_ui.app.update Caravan_ui.Shake_tick model) in
+  let shifted = tick rejected in
+  Alcotest.(check bool)
+    "shake changes board position"
+    true
+    (Caravan_ui.view shifted <> Caravan_ui.view rejected);
+  let settled = tick (tick (tick shifted)) in
+  Alcotest.(check bool) "shake stops automatically" false (has_timer settled);
+  shows settled "Action: pick";
+  shows settled "Cannot place there:";
+  shows settled "     +---+";
+  Alcotest.(check (list int))
+    "shake preserves targets"
+    [ 36; 44 ]
+    (marked settled)
+;;
+
 let frame_size () =
   List.iter
     (fun model ->
@@ -356,6 +521,7 @@ let frame_size () =
     ; steps [ Event.Down; Event.Down; Event.Enter ]
     ; black_game ()
     ; steps [ Event.Enter; Event.Enter ]
+    ; steps [ Event.Enter; Event.Enter; Event.Left; Event.Enter ]
     ]
 ;;
 
@@ -365,13 +531,20 @@ let () =
     [ ( "views"
       , [ Alcotest.test_case "landing and exit" `Quick landing
         ; Alcotest.test_case "difficulty and navigation" `Quick settings
-        ; Alcotest.test_case "move previews" `Quick move_preview
+        ; Alcotest.test_case "piece movement" `Quick piece_movement
         ; Alcotest.test_case "latest session save" `Quick save_load
         ; Alcotest.test_case "piece creation" `Quick pieces
         ; Alcotest.test_case "board figures" `Quick board_figures
         ; Alcotest.test_case "selection and input mode" `Quick selection
         ; Alcotest.test_case "player colour" `Quick piece_colour
         ; Alcotest.test_case "board boxes" `Quick board_boxes
+        ; Alcotest.test_case
+            "legal destinations and placement"
+            `Quick
+            destinations
+        ; Alcotest.test_case "captures" `Quick capture
+        ; Alcotest.test_case "promotion" `Quick promotion
+        ; Alcotest.test_case "invalid placement shake" `Quick shake
         ; Alcotest.test_case "terminal size" `Quick frame_size
         ] )
     ]

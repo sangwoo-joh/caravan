@@ -22,6 +22,7 @@ type game =
   ; move : string option
   ; focus : focus
   ; notice : string
+  ; shake : int
   }
 
 type screen =
@@ -46,13 +47,21 @@ let initial =
   }
 ;;
 
-let new_game user_colour =
-  { state = State.initial ~user_colour ()
-  ; square = (if user_colour = Piece.White then 52 else 12)
+let new_game state =
+  { state
+  ; square = (if State.user_colour state = Piece.White then 52 else 12)
   ; input = ""
   ; move = None
   ; focus = Board
   ; notice = "Select a piece or type a move, e.g. e2e4."
+  ; shake = 0
+  }
+;;
+
+let start_game state =
+  { initial with
+    screen = Play (new_game state)
+  ; user_colour = State.user_colour state
   }
 ;;
 
@@ -69,13 +78,52 @@ let confirm = function
   | _ -> false
 ;;
 
-let preview game move =
-  { game with
-    move = Some move
-  ; state = State.think game.state
-  ; input = ""
-  ; notice = "Move preview only; engine and legal moves are not connected."
-  }
+let reject_move game reason =
+  { game with notice = "Cannot place there: " ^ reason; shake = 4 }
+;;
+
+let piece_name = function
+  | Piece.Pawn -> "pawn"
+  | Knight -> "knight"
+  | Bishop -> "bishop"
+  | Rook -> "rook"
+  | Queen -> "queen"
+  | King -> "king"
+;;
+
+let place game (move : State.move) =
+  let result =
+    Result.bind (State.pick game.state move.from_square) (fun _ ->
+      Logic.play game.state move)
+  in
+  match result with
+  | Error reason -> reject_move game reason
+  | Ok state ->
+    let captured =
+      match State.piece_at game.state move.to_square with
+      | Some piece -> Some piece
+      | None ->
+        (match State.piece_at game.state move.from_square with
+         | Some piece
+           when piece.kind = Pawn
+                && move.from_square mod 8 <> move.to_square mod 8 ->
+           State.piece_at
+             game.state
+             ((move.from_square / 8 * 8) + (move.to_square mod 8))
+         | _ -> None)
+    in
+    let notice =
+      match captured with
+      | Some piece -> "Captured opponent's " ^ piece_name piece.kind ^ "."
+      | None -> "Moved " ^ Uci.move_to_string move ^ "."
+    in
+    { game with
+      state
+    ; move = Some (Uci.move_to_string move)
+    ; input = ""
+    ; notice
+    ; shake = 0
+    }
 ;;
 
 let select_or_place game =
@@ -83,19 +131,35 @@ let select_or_place game =
   | Think ->
     (match State.pick game.state game.square with
      | Error notice -> { game with notice }
+     | Ok _ when State.turn game.state <> State.user_colour game.state ->
+       { game with notice = "It is not your turn." }
      | Ok state ->
-       { game with
-         state
-       ; input = ""
-       ; notice = "Choose a destination; select the same square to cancel."
-       })
+       (match Logic.status state with
+        | Checkmate _ | Draw _ -> { game with notice = "The game has ended." }
+        | Playing | Check ->
+          { game with
+            state
+          ; input = ""
+          ; shake = 0
+          ; notice = "Choose an x or an opponent's piece; same square cancels."
+          }))
   | Pick square when square = game.square ->
     { game with
       state = State.think game.state
     ; notice = "Selection cancelled."
+    ; shake = 0
     }
   | Pick square ->
-    preview game (Uci.square_name square ^ Uci.square_name game.square)
+    let promotion =
+      match State.piece_at game.state square with
+      | Some piece
+        when piece.kind = Pawn && (game.square / 8 = 0 || game.square / 8 = 7)
+        -> Some Piece.Queen
+      | _ -> None
+    in
+    (match State.move ?promotion square game.square with
+     | Error reason -> reject_move game reason
+     | Ok move -> place game move)
 ;;
 
 let board_key key game =
@@ -113,10 +177,7 @@ let board_key key game =
   | Event.Enter when State.action game.state = Think && game.input <> "" ->
     (match Uci.move_of_string game.input with
      | Error notice -> { game with notice }
-     | Ok move ->
-       (match State.pick game.state move.from_square with
-        | Error notice -> { game with notice }
-        | Ok _ -> preview game (Uci.move_to_string move)))
+     | Ok move -> place game move)
   | key when confirm key -> select_or_place game
   | Event.Char c
     when State.action game.state = Think
@@ -143,7 +204,10 @@ let update key model =
            (match cursor with
             | 0 ->
               ( { model with
-                  screen = Play (new_game model.user_colour)
+                  screen =
+                    Play
+                      (new_game
+                         (State.initial ~user_colour:model.user_colour ()))
                 ; notice = ""
                 }
               , false )
@@ -275,6 +339,14 @@ let setting cursor difficulty user_colour =
 ;;
 
 let play game difficulty =
+  let destinations =
+    match State.action game.state with
+    | Think -> []
+    | Pick source ->
+      Logic.legal_moves game.state
+      |> List.filter_map (fun (move : State.move) ->
+        if move.from_square = source then Some move.to_square else None)
+  in
   let selected =
     match State.action game.state with
     | Think -> None
@@ -295,6 +367,9 @@ let play game difficulty =
         | Pick _ -> "pick")
     | 3 -> menu_item (game.focus = Save) "[ Save ]"
     | 4 -> menu_item (game.focus = Main_menu) "[ Main menu ]"
+    | 5 ->
+      "  Turn: "
+      ^ if State.turn game.state = Piece.White then "White" else "Black"
     | 6 -> "  Engine: not connected"
     | 7 -> "  [ ] cursor   { } picked"
     | _ -> ""
@@ -310,7 +385,7 @@ let play game difficulty =
              let figure =
                match State.piece_at game.state square with
                | Some piece -> piece.figure
-               | None -> " "
+               | None -> if List.mem square destinations then "x" else " "
              in
              if selected = Some square
              then Printf.sprintf "{%s}" figure
@@ -327,14 +402,20 @@ let play game difficulty =
          ; border
          ]))
   in
+  let shift line =
+    if game.shake = 0
+    then line
+    else if game.shake mod 2 = 0
+    then String.sub line 1 (String.length line - 1)
+    else " " ^ line
+  in
   String.concat
     "\n"
-    ([ "  Caravan / Play"; files; border ]
-     @ rows
-     @ [ files
-       ; "  UCI move: "
+    ([ "  Caravan / Play" ]
+     @ List.map shift ([ files; border ] @ rows @ [ files ])
+     @ [ "  UCI move: "
          ^ game.input
-         ^ "_    Last preview: "
+         ^ "_    Last move: "
          ^ Option.value game.move ~default:"-"
        ; "  " ^ game.notice
        ; "  Arrows: move; Right at h-file: menu; Left: board; Ctrl+C: quit"
@@ -349,10 +430,31 @@ let view model =
   | Setting cursor -> setting cursor model.difficulty model.user_colour
 ;;
 
+type message =
+  | Key of Event.key
+  | Shake_tick
+
 let app =
   { init = initial, Cmd.none
-  ; update
+  ; update =
+      (fun message model ->
+        match message with
+        | Key key -> update key model
+        | Shake_tick ->
+          let model =
+            match model.screen with
+            | Play game when game.shake > 0 ->
+              { model with screen = Play { game with shake = game.shake - 1 } }
+            | _ -> model
+          in
+          model, Cmd.none)
   ; view
-  ; subscriptions = (fun _ -> Sub.keys (fun key -> Some key))
+  ; subscriptions =
+      (fun model ->
+        let keys = Sub.keys (fun key -> Some (Key key)) in
+        match model.screen with
+        | Play game when game.shake > 0 ->
+          Sub.batch [ keys; Sub.every 0.06 (fun () -> Shake_tick) ]
+        | _ -> keys)
   }
 ;;
