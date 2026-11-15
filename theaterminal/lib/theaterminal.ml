@@ -1,4 +1,4 @@
-module Event = Event
+module KeyEvent = KeyEvent
 module Terminal = Terminal
 module Cmd = Cmd
 module Sub = Sub
@@ -11,7 +11,7 @@ type ('model, 'msg) app =
   }
 
 type 'msg source =
-  | Keys of (Event.key -> 'msg option) list
+  | Keys of (KeyEvent.key -> 'msg option) list
   | Every of float * (unit -> 'msg)
   | Worker :
       ('request Troupe.self -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
@@ -30,7 +30,7 @@ let sources subscriptions =
     List.filter_map
       (function
         | key, Sub.Every (seconds, f) -> Some (key, Every (seconds, f))
-        | key, Sub.Worker (run, on_stop) -> Some (key, Worker (run, on_stop))
+        | key, Sub.Worker (run, cleanup) -> Some (key, Worker (run, cleanup))
         | _, Sub.Keys _ -> None)
       leaves
   in
@@ -57,7 +57,7 @@ let spawn_source source ~runtime =
                  List.iter
                    (fun f -> Option.iter (Troupe.send runtime) (f k))
                    !callback)
-              (Event.parse (Bytes.sub_string buf 0 n));
+              (KeyEvent.parse (Bytes.sub_string buf 0 n));
             loop ())
         in
         loop ())
@@ -87,23 +87,23 @@ let spawn_source source ~runtime =
           callback := f;
           true
         | _ -> false) )
-  | Worker (run, on_stop) ->
+  | Worker (run, cleanup) ->
     let stopped = ref false in
-    let cleanup () =
+    let cleanup_once () =
       if not !stopped
       then (
         stopped := true;
-        on_stop ())
+        cleanup ())
     in
     let actor =
       Troupe.spawn (fun self ->
-        Fun.protect ~finally:cleanup (fun () ->
+        Fun.protect ~finally:cleanup_once (fun () ->
           run self ~dispatch:(Troupe.send runtime)))
     in
     ( (fun () ->
         Troupe.stop actor;
-        cleanup ())
-    , cleanup
+        cleanup_once ())
+    , cleanup_once
     , (function
         | Worker _ -> true
         | _ -> false) )
@@ -132,7 +132,7 @@ let run_app ~render ~on_quit app =
                   (fun key (cancel, _, _) -> if not (keep key) then cancel ())
                   registry;
                 Hashtbl.filter_map_inplace
-                  (fun key addr -> if keep key then Some addr else None)
+                  (fun key entry -> if keep key then Some entry else None)
                   registry;
                 List.iter
                   (fun (key, source) ->

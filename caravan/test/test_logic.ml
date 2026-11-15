@@ -110,7 +110,7 @@ let movement () =
   Alcotest.(check (list string))
     "history"
     [ "e2e4"; "d7d5"; "e4d5" ]
-    (List.map Uci.move_to_string (State.moves next));
+    (List.map Uci.move_to_string (State.move_history next));
   Alcotest.(check bool)
     "previous snapshot"
     true
@@ -178,7 +178,7 @@ let castling () =
   Alcotest.(check bool)
     "both white rights lost"
     false
-    (State.can_castle short White Queenside);
+    (State.has_castling_right short White Queenside);
   let long = play short "e8c8" in
   has_piece long "c8" King Black;
   has_piece long "d8" Rook Black;
@@ -188,12 +188,12 @@ let castling () =
   Alcotest.(check bool)
     "black rook right lost"
     false
-    (State.can_castle returned Black Kingside);
+    (State.has_castling_right returned Black Kingside);
   let captured = play start "a1a8" in
   Alcotest.(check bool)
     "captured rook loses right"
     false
-    (State.can_castle captured Black Queenside);
+    (State.has_castling_right captured Black Queenside);
   let moved_king = sequence start [ "e1f1"; "e8f8"; "f1e1"; "f8e8" ] in
   valid moved_king "e1g1" false;
   List.iter
@@ -258,7 +258,7 @@ let endings () =
   Alcotest.(check bool)
     "fool's mate"
     true
-    (Logic.status mate = Logic.Checkmate Piece.Black);
+    (Logic.status mate = Logic.Checkmate { winner = Piece.Black });
   Alcotest.(check bool) "no moves in mate" true (Logic.legal_moves mate = []);
   Alcotest.(check bool)
     "ended game rejects play"
@@ -361,7 +361,8 @@ let move_limits () =
   Alcotest.(check bool)
     "mate takes precedence"
     true
-    (Logic.status (play mating "g6g7") = Logic.Checkmate Piece.White)
+    (Logic.status (play mating "g6g7")
+     = Logic.Checkmate { winner = Piece.White })
 ;;
 
 let rec perft state depth =

@@ -1,5 +1,5 @@
 type 'msg source =
-  | Keys of (Event.key -> 'msg option)
+  | Keys of (KeyEvent.key -> 'msg option)
   | Every of float * (unit -> 'msg)
   | Worker :
       ('request Troupe.self -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
@@ -22,7 +22,7 @@ let every ?key seconds f =
   Leaf (key, Every (seconds, f))
 ;;
 
-let worker ~key ~on_stop run = Leaf ("worker:" ^ key, Worker (run, on_stop))
+let worker ~key ~cleanup run = Leaf ("worker:" ^ key, Worker (run, cleanup))
 let batch subs = Batch subs
 
 let rec leaves = function

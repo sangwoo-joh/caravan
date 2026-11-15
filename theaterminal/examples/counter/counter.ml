@@ -55,6 +55,6 @@ let () =
           Sub.batch
             [
               Sub.every 0.03 (fun () -> Tick);
-              Sub.keys (function Event.Char 'q' -> Some Quit | _ -> None);
+              Sub.keys (function KeyEvent.Char 'q' -> Some Quit | _ -> None);
             ]);
     }

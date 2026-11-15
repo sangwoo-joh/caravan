@@ -6,8 +6,8 @@ type 'msg t
 (** Do nothing. *)
 val none : 'msg t
 
-(** [msg m] dispatches [m] back into the loop as the next message. *)
-val msg : 'msg -> 'msg t
+(** [dispatch m] dispatches [m] back into the loop as the next message. *)
+val dispatch : 'msg -> 'msg t
 
 (** Stop the program. *)
 val quit : 'msg t
@@ -21,7 +21,7 @@ val send : 'request Troupe.Address.t -> 'request -> 'msg t
 (** Run several commands, left to right. *)
 val batch : 'msg t list -> 'msg t
 
-(** Interpret a command, calling [dispatch] for each {!msg} and [on_quit] for
+(** Interpret a command, calling [dispatch] for each {!dispatch} and [on_quit] for
     {!quit}. Used by the runtime; applications build commands with the
     combinators above. *)
 val run : 'msg t -> dispatch:('msg -> unit) -> on_quit:(unit -> unit) -> unit

@@ -7,7 +7,7 @@ type draw_reason =
 type status =
   | Playing
   | Check
-  | Checkmate of Piece.colour
+  | Checkmate of { winner : Piece.colour }
   | Draw of draw_reason
 
 type draw_claim =

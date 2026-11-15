@@ -19,7 +19,7 @@ val close : ?pause:(float -> unit) -> t -> (Unix.process_status, string) result
 
 val play_input
   :  ?skill:int
-  -> ?movetime:int
+  -> ?movetime_ms:int
   -> executable:string
   -> State.t
   -> string
@@ -31,14 +31,14 @@ val wait : ?pause:(float -> unit) -> t -> (Unix.process_status, string) result
 val search
   :  ?pause:(float -> unit)
   -> ?skill:int
-  -> ?movetime:int
+  -> ?movetime_ms:int
   -> t
   -> State.t
   -> (search_result, string) result
 
 val analyse
   :  ?skill:int
-  -> ?movetime:int
+  -> ?movetime_ms:int
   -> executable:string
   -> State.t
   -> (search_result, string) result

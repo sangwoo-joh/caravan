@@ -9,8 +9,8 @@ type castle_side =
   | Queenside
 
 type action =
-  | Think
-  | Pick of int
+  | Unselect
+  | Select of int
 
 type t
 
@@ -31,15 +31,15 @@ val piece_at : t -> int -> Piece.t option
 val turn : t -> Piece.colour
 val user_colour : t -> Piece.colour
 val action : t -> action
-val think : t -> t
-val pick : t -> int -> (t, string) result
+val unselect : t -> t
+val select : t -> int -> (t, string) result
 val castling_rights : t -> (Piece.colour * castle_side) list
-val can_castle : t -> Piece.colour -> castle_side -> bool
+val has_castling_right : t -> Piece.colour -> castle_side -> bool
 val en_passant : t -> int option
 val halfmove_clock : t -> int
 val fullmove_number : t -> int
 val previous : t -> t option
-val moves : t -> move list
+val move_history : t -> move list
 
 val advance_unchecked
   :  t

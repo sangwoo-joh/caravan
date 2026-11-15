@@ -40,8 +40,8 @@ let () =
       subscriptions =
         (fun _ ->
           Sub.keys (function
-            | Event.Left -> Some Prev
-            | Event.Right -> Some Next
-            | Event.Char 'q' -> Some Quit
+            | KeyEvent.Left -> Some Prev
+            | KeyEvent.Right -> Some Next
+            | KeyEvent.Char 'q' -> Some Quit
             | _ -> None));
     }

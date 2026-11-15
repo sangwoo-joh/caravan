@@ -33,7 +33,7 @@ type draw_reason =
 type status =
   | Playing
   | Check
-  | Checkmate of Piece.colour
+  | Checkmate of { winner : Piece.colour }
   | Draw of draw_reason
 
 type draw_claim =
@@ -122,7 +122,7 @@ let castle_allowed state (move : State.move) (piece : Piece.t) =
   in
   source = home
   && target = home + (2 * step)
-  && State.can_castle state piece.colour side
+  && State.has_castling_right state piece.colour side
   && rook_present
   && clear_path (State.piece_at state) home rook_square
   && (not (in_check state piece.colour))
@@ -338,8 +338,8 @@ let repetition_count state =
     State.turn state = State.turn other
     && List.for_all
          (fun (colour, side) ->
-            State.can_castle state colour side
-            = State.can_castle other colour side)
+            State.has_castling_right state colour side
+            = State.has_castling_right other colour side)
          [ Piece.White, State.Kingside
          ; White, Queenside
          ; Black, Kingside
@@ -360,7 +360,10 @@ let repetition_count state =
 let status state =
   let check = in_check state (State.turn state) in
   if legal_moves state = []
-  then if check then Checkmate (opposite (State.turn state)) else Draw Stalemate
+  then
+    if check
+    then Checkmate { winner = opposite (State.turn state) }
+    else Draw Stalemate
   else if insufficient_material state
   then Draw Insufficient_material
   else if State.halfmove_clock state >= 150

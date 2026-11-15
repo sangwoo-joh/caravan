@@ -1,6 +1,6 @@
 open Theaterminal
 
-let step model key = fst (Caravan_ui.update key model)
+let step model key = fst (Caravan_ui.update_key key model)
 let steps keys = List.fold_left step Caravan_ui.initial keys
 
 let contains text part =
@@ -16,7 +16,7 @@ let shows model text =
 ;;
 
 let quit model key =
-  let _, command = Caravan_ui.update key model in
+  let _, command = Caravan_ui.update_key key model in
   let quit = ref false in
   Cmd.run command ~dispatch:ignore ~on_quit:(fun () -> quit := true);
   !quit
@@ -25,39 +25,45 @@ let quit model key =
 let landing () =
   List.iter
     (shows Caravan_ui.initial)
-    [ "Caravan"; "> Play"; "Load"; "Setting"; "Exit" ];
+    [ "Caravan"; "> Play"; "Load"; "Settings"; "Exit" ];
   List.iter
     (fun key ->
        Alcotest.(check string)
          "unsupported input is ignored"
          (Caravan_ui.view Caravan_ui.initial)
          (Caravan_ui.view (step Caravan_ui.initial key)))
-    [ Event.Char 'q'; Event.Escape; Event.Tab; Event.Char 'e' ];
-  shows (steps [ Event.Down; Event.Enter ]) "No session save yet";
-  let exit = steps [ Event.Down; Event.Down; Event.Down ] in
-  Alcotest.(check bool) "Exit confirms" true (quit exit Event.Enter);
+    [ KeyEvent.Char 'q'; KeyEvent.Escape; KeyEvent.Tab; KeyEvent.Char 'e' ];
+  shows (steps [ KeyEvent.Down; KeyEvent.Enter ]) "No session save yet";
+  let exit = steps [ KeyEvent.Down; KeyEvent.Down; KeyEvent.Down ] in
+  Alcotest.(check bool) "Exit confirms" true (quit exit KeyEvent.Enter);
   Alcotest.(check bool)
     "Ctrl+C quits"
     true
-    (quit Caravan_ui.initial (Event.Unknown "\003"))
+    (quit Caravan_ui.initial (KeyEvent.Unknown "\003"))
 ;;
 
 let settings () =
   let model =
-    steps [ Event.Down; Event.Down; Event.Enter; Event.Down; Event.Char ' ' ]
+    steps
+      [ KeyEvent.Down
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Char ' '
+      ]
   in
   shows model "(*) Hard";
   let model =
     List.fold_left
       step
       model
-      [ Event.Down
-      ; Event.Down
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Up
-      ; Event.Up
-      ; Event.Enter
+      [ KeyEvent.Down
+      ; KeyEvent.Down
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Up
+      ; KeyEvent.Up
+      ; KeyEvent.Enter
       ]
   in
   shows model "Caravan / Play";
@@ -65,12 +71,18 @@ let settings () =
   Alcotest.(check bool)
     "Ctrl+C quits play"
     true
-    (quit model (Event.Unknown "\003"))
+    (quit model (KeyEvent.Unknown "\003"))
 ;;
 
 let piece_movement () =
   let model =
-    steps [ Event.Enter; Event.Enter; Event.Up; Event.Up; Event.Char ' ' ]
+    steps
+      [ KeyEvent.Enter
+      ; KeyEvent.Enter
+      ; KeyEvent.Up
+      ; KeyEvent.Up
+      ; KeyEvent.Char ' '
+      ]
   in
   shows model "Last move: e2e4";
   shows model "Moved e2e4.";
@@ -79,17 +91,17 @@ let piece_movement () =
     List.fold_left
       step
       model
-      [ Event.Char 'e'
-      ; Event.Char '2'
-      ; Event.Char 'e'
-      ; Event.Char '4'
-      ; Event.Char 'r'
-      ; Event.Backspace
-      ; Event.Enter
+      [ KeyEvent.Char 'e'
+      ; KeyEvent.Char '2'
+      ; KeyEvent.Char 'e'
+      ; KeyEvent.Char '4'
+      ; KeyEvent.Char 'r'
+      ; KeyEvent.Backspace
+      ; KeyEvent.Enter
       ]
   in
   shows model "Last move: e2e4";
-  let model = List.fold_left step model [ Event.Char 'e'; Event.Enter ] in
+  let model = List.fold_left step model [ KeyEvent.Char 'e'; KeyEvent.Enter ] in
   shows model "Use a move such as e2e4";
   shows model "Last move: e2e4"
 ;;
@@ -97,19 +109,19 @@ let piece_movement () =
 let save_load () =
   let model =
     steps
-      [ Event.Enter
-      ; Event.Enter
-      ; Event.Up
-      ; Event.Up
-      ; Event.Enter
-      ; Event.Right
-      ; Event.Right
-      ; Event.Right
-      ; Event.Right
-      ; Event.Enter
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Enter
+      [ KeyEvent.Enter
+      ; KeyEvent.Enter
+      ; KeyEvent.Up
+      ; KeyEvent.Up
+      ; KeyEvent.Enter
+      ; KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Enter
       ]
   in
   shows model "Last move: -";
@@ -117,14 +129,14 @@ let save_load () =
     List.fold_left
       step
       model
-      [ Event.Right
-      ; Event.Right
-      ; Event.Right
-      ; Event.Right
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Down
-      ; Event.Enter
+      [ KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
       ]
   in
   shows model "Last move: e2e4";
@@ -133,17 +145,17 @@ let save_load () =
     List.fold_left
       step
       model
-      [ Event.Char 'd'
-      ; Event.Char '2'
-      ; Event.Char 'd'
-      ; Event.Char '4'
-      ; Event.Enter
-      ; Event.Right
-      ; Event.Enter
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Down
-      ; Event.Enter
+      [ KeyEvent.Char 'd'
+      ; KeyEvent.Char '2'
+      ; KeyEvent.Char 'd'
+      ; KeyEvent.Char '4'
+      ; KeyEvent.Enter
+      ; KeyEvent.Right
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
       ]
   in
   shows model "Last move: e2e4"
@@ -179,7 +191,7 @@ let pieces () =
 ;;
 
 let board_figures () =
-  let model = steps [ Event.Enter ] in
+  let model = steps [ KeyEvent.Enter ] in
   List.iter
     (shows model)
     [ "| ♜ | ♞ | ♝ | ♛ | ♚ | ♝ | ♞ | ♜ |"
@@ -190,19 +202,19 @@ let board_figures () =
     ];
   let before = Caravan_ui.Piece.make_piece Pawn White in
   ignore (Caravan_ui.view model);
-  ignore (Caravan_ui.view (step model Event.Up));
+  ignore (Caravan_ui.view (step model KeyEvent.Up));
   let after = Caravan_ui.Piece.make_piece Pawn White in
   Alcotest.(check int)
     "rendering does not create pieces"
     (before.id + 1)
     after.id;
-  ignore (steps [ Event.Enter ]);
+  ignore (steps [ KeyEvent.Enter ]);
   let next = Caravan_ui.Piece.make_piece Pawn White in
   Alcotest.(check int) "new game creates 32 pieces" (after.id + 33) next.id
 ;;
 
 let type_input model text =
-  String.fold_left (fun model c -> step model (Event.Char c)) model text
+  String.fold_left (fun model c -> step model (KeyEvent.Char c)) model text
 ;;
 
 let repeat key count model =
@@ -210,110 +222,110 @@ let repeat key count model =
 ;;
 
 let selection () =
-  let start = steps [ Event.Enter ] in
-  shows start "Action: think";
+  let start = steps [ KeyEvent.Enter ] in
+  shows start "Action: unselect";
   shows start "White: You   Black: Stockfish";
-  let empty = step (step start Event.Up) (Event.Char ' ') in
-  shows empty "Action: think";
+  let empty = step (step start KeyEvent.Up) (KeyEvent.Char ' ') in
+  shows empty "Action: unselect";
   shows empty "Select a square containing your piece.";
-  let opponent = step (repeat Event.Up 5 start) Event.Enter in
+  let opponent = step (repeat KeyEvent.Up 5 start) KeyEvent.Enter in
   shows opponent "You can only select your own pieces.";
-  shows opponent "Action: think";
-  let picked = step (type_input start "e2") (Event.Char ' ') in
-  shows picked "Action: pick";
+  shows opponent "Action: unselect";
+  let picked = step (type_input start "e2") (KeyEvent.Char ' ') in
+  shows picked "Action: select";
   shows picked "UCI move: _";
   shows picked "|{♙}|";
-  let ignored = step (type_input picked "e7e5") Event.Backspace in
+  let ignored = step (type_input picked "e7e5") KeyEvent.Backspace in
   Alcotest.(check string)
-    "pick ignores UCI input"
+    "select ignores UCI input"
     (Caravan_ui.view picked)
     (Caravan_ui.view ignored);
-  let placed = step (step picked Event.Up) Event.Enter in
-  shows placed "Action: think";
+  let placed = step (step picked KeyEvent.Up) KeyEvent.Enter in
+  shows placed "Action: unselect";
   shows placed "Last move: e2e3";
   shows (type_input placed "d2") "UCI move: d2_";
-  let cancelled = step picked (Event.Char ' ') in
-  shows cancelled "Action: think";
+  let cancelled = step picked (KeyEvent.Char ' ') in
+  shows cancelled "Action: unselect";
   shows cancelled "Selection cancelled.";
   shows (type_input cancelled "e2") "UCI move: e2_";
-  let rejected = step (type_input start "e7e5") Event.Enter in
+  let rejected = step (type_input start "e7e5") KeyEvent.Enter in
   shows rejected "You can only select your own pieces.";
   shows rejected "Last move: -";
-  shows rejected "Action: think";
-  let empty_input = step (type_input start "e3e4") Event.Enter in
+  shows rejected "Action: unselect";
+  let empty_input = step (type_input start "e3e4") KeyEvent.Enter in
   shows empty_input "Select a square containing your piece.";
   shows empty_input "Last move: -"
 ;;
 
 let black_game () =
   steps
-    [ Event.Down
-    ; Event.Down
-    ; Event.Enter
-    ; Event.Down
-    ; Event.Down
-    ; Event.Down
-    ; Event.Enter
-    ; Event.Down
-    ; Event.Enter
-    ; Event.Up
-    ; Event.Up
-    ; Event.Enter
+    [ KeyEvent.Down
+    ; KeyEvent.Down
+    ; KeyEvent.Enter
+    ; KeyEvent.Down
+    ; KeyEvent.Down
+    ; KeyEvent.Down
+    ; KeyEvent.Enter
+    ; KeyEvent.Down
+    ; KeyEvent.Enter
+    ; KeyEvent.Up
+    ; KeyEvent.Up
+    ; KeyEvent.Enter
     ]
 ;;
 
 let piece_colour () =
-  let settings = steps [ Event.Down; Event.Down; Event.Enter ] in
+  let settings = steps [ KeyEvent.Down; KeyEvent.Down; KeyEvent.Enter ] in
   shows settings "(*) White";
   shows settings "( ) Black";
   let black = black_game () in
   shows black "White: Stockfish   Black: You";
   shows black "|[♟]|";
-  shows (step black Event.Enter) "It is not your turn.";
-  let opponent = step (repeat Event.Up 5 black) Event.Enter in
+  shows (step black KeyEvent.Enter) "It is not your turn.";
+  let opponent = step (repeat KeyEvent.Up 5 black) KeyEvent.Enter in
   shows opponent "You can only select your own pieces.";
-  shows opponent "Action: think";
-  let rejected = step (type_input black "e2e4") Event.Enter in
+  shows opponent "Action: unselect";
+  let rejected = step (type_input black "e2e4") KeyEvent.Enter in
   shows rejected "You can only select your own pieces.";
-  shows (step (type_input black "e7e5") Event.Enter) "Cannot place there:";
+  shows (step (type_input black "e7e5") KeyEvent.Enter) "Cannot place there:";
   let saved =
-    repeat Event.Right 5 black |> fun model -> step model Event.Enter
+    repeat KeyEvent.Right 5 black |> fun model -> step model KeyEvent.Enter
   in
-  let landing = List.fold_left step saved [ Event.Down; Event.Enter ] in
+  let landing = List.fold_left step saved [ KeyEvent.Down; KeyEvent.Enter ] in
   let white =
     List.fold_left
       step
       landing
-      [ Event.Down
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Down
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Down
-      ; Event.Down
-      ; Event.Enter
-      ; Event.Up
-      ; Event.Up
-      ; Event.Enter
+      [ KeyEvent.Down
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Down
+      ; KeyEvent.Enter
+      ; KeyEvent.Up
+      ; KeyEvent.Up
+      ; KeyEvent.Enter
       ]
   in
   shows white "White: You   Black: Stockfish";
   let loaded =
-    repeat Event.Right 4 white
+    repeat KeyEvent.Right 4 white
     |> fun model ->
     List.fold_left
       step
       model
-      [ Event.Down; Event.Enter; Event.Down; Event.Enter ]
+      [ KeyEvent.Down; KeyEvent.Enter; KeyEvent.Down; KeyEvent.Enter ]
   in
   shows loaded "White: Stockfish   Black: You";
-  shows (step loaded Event.Enter) "It is not your turn."
+  shows (step loaded KeyEvent.Enter) "It is not your turn."
 ;;
 
 let board_boxes () =
   let lines =
-    String.split_on_char '\n' (Caravan_ui.view (steps [ Event.Enter ]))
+    String.split_on_char '\n' (Caravan_ui.view (steps [ KeyEvent.Enter ]))
   in
   let borders =
     List.filter
@@ -349,9 +361,9 @@ let move_cursor model source target =
   let vertical = (target / 8) - (source / 8)
   and horizontal = (target mod 8) - (source mod 8) in
   model
-  |> repeat (if vertical < 0 then Event.Up else Event.Down) (abs vertical)
+  |> repeat (if vertical < 0 then KeyEvent.Up else KeyEvent.Down) (abs vertical)
   |> repeat
-       (if horizontal < 0 then Event.Left else Event.Right)
+       (if horizontal < 0 then KeyEvent.Left else KeyEvent.Right)
        (abs horizontal)
 ;;
 
@@ -372,11 +384,11 @@ let fixture ?en_passant pieces =
 ;;
 
 let destinations () =
-  let picked = steps [ Event.Enter; Event.Enter ] in
+  let picked = steps [ KeyEvent.Enter; KeyEvent.Enter ] in
   Alcotest.(check (list int)) "pawn forward squares" [ 36; 44 ] (marked picked);
-  let invalid = step (move_cursor picked 52 28) Event.Enter in
+  let invalid = step (move_cursor picked 52 28) KeyEvent.Enter in
   shows invalid "Cannot place there:";
-  shows invalid "Action: pick";
+  shows invalid "Action: select";
   shows invalid "Turn: White";
   shows invalid "Last move: -";
   Alcotest.(check (list int))
@@ -384,21 +396,27 @@ let destinations () =
     [ 36; 44 ]
     (marked invalid);
   Alcotest.(check string) "pawn stays at source" "{♙}" (cell invalid 52);
-  let placed = step (move_cursor invalid 28 36) Event.Enter in
+  let placed = step (move_cursor invalid 28 36) KeyEvent.Enter in
   shows placed "Moved e2e4.";
   shows placed "Turn: Black";
-  shows placed "Action: think";
+  shows placed "Action: unselect";
   Alcotest.(check (list int))
     "targets cleared after placement"
     []
     (marked placed);
   Alcotest.(check string) "source cleared" "   " (cell placed 52);
   Alcotest.(check string) "pawn placed" "[♙]" (cell placed 36);
-  shows (step placed Event.Enter) "It is not your turn.";
-  let cancelled = step picked Event.Enter in
+  shows (step placed KeyEvent.Enter) "It is not your turn.";
+  let cancelled = step picked KeyEvent.Enter in
   Alcotest.(check (list int)) "cancel clears targets" [] (marked cancelled);
   let knight =
-    steps [ Event.Enter; Event.Down; Event.Right; Event.Right; Event.Enter ]
+    steps
+      [ KeyEvent.Enter
+      ; KeyEvent.Down
+      ; KeyEvent.Right
+      ; KeyEvent.Right
+      ; KeyEvent.Enter
+      ]
   in
   Alcotest.(check (list int))
     "knight jumps over pieces"
@@ -406,7 +424,7 @@ let destinations () =
     (marked knight);
   let pinned =
     fixture [ 60, King, White; 0, King, Black; 52, Rook, White; 4, Rook, Black ]
-    |> fun model -> step model Event.Enter
+    |> fun model -> step model KeyEvent.Enter
   in
   Alcotest.(check (list int))
     "pinned rook cannot expose king"
@@ -419,7 +437,7 @@ let capture () =
     fixture
       [ 56, King, White; 7, King, Black; 52, Pawn, White; 43, Rook, Black ]
   in
-  let picked = step start Event.Enter in
+  let picked = step start KeyEvent.Enter in
   Alcotest.(check string)
     "capture target keeps enemy figure"
     " ♜ "
@@ -428,14 +446,14 @@ let capture () =
     "only empty destinations marked"
     [ 36; 44 ]
     (marked picked);
-  let captured = step (move_cursor picked 52 43) Event.Enter in
+  let captured = step (move_cursor picked 52 43) KeyEvent.Enter in
   shows captured "Captured opponent's rook.";
   shows captured "Turn: Black";
-  shows captured "Action: think";
+  shows captured "Action: unselect";
   Alcotest.(check string) "captured rook replaced" "[♙]" (cell captured 43);
   Alcotest.(check string) "source cleared" "   " (cell captured 52);
   Alcotest.(check (list int)) "capture clears markers" [] (marked captured);
-  let typed = step (type_input start "e2d3") Event.Enter in
+  let typed = step (type_input start "e2d3") KeyEvent.Enter in
   shows typed "Captured opponent's rook.";
   Alcotest.(check string) "typed capture applied" " ♙ " (cell typed 43);
   let ep =
@@ -443,12 +461,12 @@ let capture () =
       ~en_passant:19
       [ 56, King, White; 7, King, Black; 28, Pawn, White; 27, Pawn, Black ]
   in
-  let picked = step (move_cursor ep 52 28) Event.Enter in
+  let picked = step (move_cursor ep 52 28) KeyEvent.Enter in
   Alcotest.(check bool)
     "empty en passant target marked"
     true
     (List.mem 19 (marked picked));
-  let captured = step (move_cursor picked 28 19) Event.Enter in
+  let captured = step (move_cursor picked 28 19) KeyEvent.Enter in
   shows captured "Captured opponent's pawn.";
   Alcotest.(check string) "en passant victim removed" "   " (cell captured 27);
   Alcotest.(check string) "en passant pawn placed" "[♙]" (cell captured 19)
@@ -456,20 +474,20 @@ let capture () =
 
 let promotion () =
   let start = fixture [ 56, King, White; 7, King, Black; 12, Pawn, White ] in
-  let picked = step (move_cursor start 52 12) Event.Enter in
-  let promoted = step (step picked Event.Up) Event.Enter in
+  let picked = step (move_cursor start 52 12) KeyEvent.Enter in
+  let promoted = step (step picked KeyEvent.Up) KeyEvent.Enter in
   shows promoted "Last move: e7e8q";
   Alcotest.(check string)
     "click promotion defaults to queen"
     "[♕]"
     (cell promoted 4);
-  let typed = step (type_input start "e7e8n") Event.Enter in
+  let typed = step (type_input start "e7e8n") KeyEvent.Enter in
   Alcotest.(check string) "typed underpromotion" " ♘ " (cell typed 4)
 ;;
 
 let shake () =
-  let picked = steps [ Event.Enter; Event.Enter ] in
-  let rejected = step (step picked Event.Left) Event.Enter in
+  let picked = steps [ KeyEvent.Enter; KeyEvent.Enter ] in
+  let rejected = step (step picked KeyEvent.Left) KeyEvent.Enter in
   let has_timer model =
     List.exists
       (fun (_, source) ->
@@ -490,7 +508,7 @@ let shake () =
     (Caravan_ui.view shifted <> Caravan_ui.view rejected);
   let settled = tick (tick (tick shifted)) in
   Alcotest.(check bool) "shake stops automatically" false (has_timer settled);
-  shows settled "Action: pick";
+  shows settled "Action: select";
   shows settled "Cannot place there:";
   shows settled "     +---+";
   Alcotest.(check (list int))
@@ -505,9 +523,9 @@ let black_orientation () =
   shows black "  1  | ♖ | ♘ | ♗ | ♔ | ♕ | ♗ | ♘ | ♖ | 1";
   shows black "  8  | ♜ | ♞ | ♝ | ♚ | ♛ | ♝ | ♞ | ♜ | 8";
   Alcotest.(check string) "black cursor starts on e7" "[♟]" (cell black 51);
-  let right_edge = repeat Event.Right 5 black in
+  let right_edge = repeat KeyEvent.Right 5 black in
   shows right_edge "> [ Save ]";
-  let back = step right_edge Event.Left in
+  let back = step right_edge KeyEvent.Left in
   Alcotest.(check string) "menu returns to a7" "[♟]" (cell back 55);
   let state = Caravan_ui.State.initial ~user_colour:Black () in
   let white_move =
@@ -521,19 +539,21 @@ let black_orientation () =
     | Error error -> Alcotest.fail error
   in
   let model = Caravan_ui.start_game state in
-  let picked = step model Event.Enter in
+  let picked = step model KeyEvent.Enter in
   Alcotest.(check (list int))
     "black pawn targets point upward"
     [ 35; 43 ]
     (marked picked);
-  let moved = List.fold_left step picked [ Event.Up; Event.Up; Event.Enter ] in
+  let moved =
+    List.fold_left step picked [ KeyEvent.Up; KeyEvent.Up; KeyEvent.Enter ]
+  in
   shows moved "Last move: e7e5";
   shows moved "Turn: White";
   Alcotest.(check string) "black pawn placed at e5" "[♟]" (cell moved 35);
   Alcotest.(check string) "e7 cleared" "   " (cell moved 51);
-  let left = step model Event.Left in
+  let left = step model KeyEvent.Left in
   Alcotest.(check string) "left goes toward f-file" "[♟]" (cell left 50);
-  let down = step model Event.Down in
+  let down = step model KeyEvent.Down in
   Alcotest.(check string) "down goes toward rank 8" "[♚]" (cell down 59)
 ;;
 
@@ -592,7 +612,7 @@ let run_engine executable initial =
               match source with
               | Sub.Keys _ -> None
               | Sub.Every (seconds, tick) -> Some (Sub.every ~key seconds tick)
-              | Sub.Worker (run, on_stop) -> Some (Sub.worker ~key ~on_stop run))
+              | Sub.Worker (run, cleanup) -> Some (Sub.worker ~key ~cleanup run))
           in
           Sub.batch
             (Sub.every ~key:"test-heartbeat" 0.01 (fun () ->
@@ -606,8 +626,8 @@ let run_engine executable initial =
 ;;
 
 let engine_turn () =
-  let start = steps [ Event.Enter ] in
-  let waiting = step (type_input start "e2e4") Event.Enter in
+  let start = steps [ KeyEvent.Enter ] in
+  let waiting = step (type_input start "e2e4") KeyEvent.Enter in
   shows waiting "Engine: thinking (1s)";
   with_engine "printf 'bestmove e7e5\\n'" (fun executable log ->
     let replied, ticks = run_engine executable waiting in
@@ -626,7 +646,7 @@ let engine_turn () =
       ; "moves e2e4\n"
       ; "quit\n"
       ];
-    let second = step (type_input replied "g1f3") Event.Enter in
+    let second = step (type_input replied "g1f3") KeyEvent.Enter in
     shows second "Engine: thinking (1s)");
   with_engine "printf 'bestmove e2e4\\n'" (fun executable _ ->
     let replied, _ = run_engine executable (black_game ()) in
@@ -651,20 +671,22 @@ let engine_turn () =
 let difficulty_mapping () =
   List.iter
     (fun (cursor, level) ->
-       let settings = steps [ Event.Down; Event.Down; Event.Enter; Event.Up ] in
+       let settings =
+         steps [ KeyEvent.Down; KeyEvent.Down; KeyEvent.Enter; KeyEvent.Up ]
+       in
        let selected =
-         repeat Event.Down cursor settings
-         |> fun model -> step model Event.Enter
+         repeat KeyEvent.Down cursor settings
+         |> fun model -> step model KeyEvent.Enter
        in
        let start =
-         repeat Event.Down (5 - cursor) selected
+         repeat KeyEvent.Down (5 - cursor) selected
          |> fun model ->
          List.fold_left
            step
            model
-           [ Event.Enter; Event.Up; Event.Up; Event.Enter ]
+           [ KeyEvent.Enter; KeyEvent.Up; KeyEvent.Up; KeyEvent.Enter ]
        in
-       let waiting = step (type_input start "e2e4") Event.Enter in
+       let waiting = step (type_input start "e2e4") KeyEvent.Enter in
        with_engine "printf 'bestmove e7e5\\n'" (fun executable log ->
          ignore (run_engine executable waiting);
          let commands = In_channel.with_open_bin log In_channel.input_all in
@@ -701,8 +723,8 @@ let cancel_engine ?(quit = false) () =
   with_engine ":" (fun executable log ->
     let base = Caravan_ui.make_app ~executable in
     let waiting =
-      steps [ Event.Enter ]
-      |> fun model -> step (type_input model "e2e4") Event.Enter
+      steps [ KeyEvent.Enter ]
+      |> fun model -> step (type_input model "e2e4") KeyEvent.Enter
     in
     let departed_at = ref None in
     let ticks = ref 0
@@ -730,12 +752,12 @@ let cancel_engine ?(quit = false) () =
                     List.fold_left
                       step
                       model
-                      [ Event.Right
-                      ; Event.Right
-                      ; Event.Right
-                      ; Event.Right
-                      ; Event.Down
-                      ; Event.Enter
+                      [ KeyEvent.Right
+                      ; KeyEvent.Right
+                      ; KeyEvent.Right
+                      ; KeyEvent.Right
+                      ; KeyEvent.Down
+                      ; KeyEvent.Enter
                       ])
                 else model
               | Engine_result _ ->
@@ -760,8 +782,8 @@ let cancel_engine ?(quit = false) () =
               Sub.leaves (base.subscriptions model)
               |> List.filter_map (fun (key, source) ->
                 match source with
-                | Sub.Worker (run, on_stop) ->
-                  Some (Sub.worker ~key ~on_stop run)
+                | Sub.Worker (run, cleanup) ->
+                  Some (Sub.worker ~key ~cleanup run)
                 | _ -> None)
             in
             Sub.batch
@@ -809,11 +831,11 @@ let frame_size () =
                < 80))
          lines)
     [ Caravan_ui.initial
-    ; steps [ Event.Enter ]
-    ; steps [ Event.Down; Event.Down; Event.Enter ]
+    ; steps [ KeyEvent.Enter ]
+    ; steps [ KeyEvent.Down; KeyEvent.Down; KeyEvent.Enter ]
     ; black_game ()
-    ; steps [ Event.Enter; Event.Enter ]
-    ; steps [ Event.Enter; Event.Enter; Event.Left; Event.Enter ]
+    ; steps [ KeyEvent.Enter; KeyEvent.Enter ]
+    ; steps [ KeyEvent.Enter; KeyEvent.Enter; KeyEvent.Left; KeyEvent.Enter ]
     ]
 ;;
 

@@ -1,23 +1,23 @@
 open Theaterminal
 
-let key = Alcotest.testable Event.pp Event.equal
+let key = Alcotest.testable KeyEvent.pp KeyEvent.equal
 
 let parse_cases () =
   let check input expected =
-    Alcotest.(check (list key)) input expected (Event.parse input)
+    Alcotest.(check (list key)) input expected (KeyEvent.parse input)
   in
-  check "a" [ Event.Char 'a' ];
-  check "ab" [ Event.Char 'a'; Event.Char 'b' ];
-  check "\r" [ Event.Enter ];
-  check "\n" [ Event.Enter ];
-  check "\t" [ Event.Tab ];
-  check "\x7f" [ Event.Backspace ];
-  check "\x1b[A" [ Event.Up ];
-  check "\x1b[B" [ Event.Down ];
-  check "\x1b[C" [ Event.Right ];
-  check "\x1b[D" [ Event.Left ];
-  check "\x1b" [ Event.Escape ];
-  check "\x1b[Aq" [ Event.Up; Event.Char 'q' ]
+  check "a" [ KeyEvent.Char 'a' ];
+  check "ab" [ KeyEvent.Char 'a'; KeyEvent.Char 'b' ];
+  check "\r" [ KeyEvent.Enter ];
+  check "\n" [ KeyEvent.Enter ];
+  check "\t" [ KeyEvent.Tab ];
+  check "\x7f" [ KeyEvent.Backspace ];
+  check "\x1b[A" [ KeyEvent.Up ];
+  check "\x1b[B" [ KeyEvent.Down ];
+  check "\x1b[C" [ KeyEvent.Right ];
+  check "\x1b[D" [ KeyEvent.Left ];
+  check "\x1b" [ KeyEvent.Escape ];
+  check "\x1b[Aq" [ KeyEvent.Up; KeyEvent.Char 'q' ]
 ;;
 
 let parse_unknown_sequences () =
@@ -25,28 +25,28 @@ let parse_unknown_sequences () =
     (fun sequence ->
        Alcotest.(check (list key))
          "whole sequence remains unknown"
-         [ Event.Unknown sequence; Event.Char 'q' ]
-         (Event.parse (sequence ^ "q")))
+         [ KeyEvent.Unknown sequence; KeyEvent.Char 'q' ]
+         (KeyEvent.parse (sequence ^ "q")))
     [ "\x1b[3~"; "\x1b[15~"; "\x1b[1;5A"; "\x1b[?25h"; "\x1b[1 q" ];
   Alcotest.(check (list key))
     "adjacent sequences"
-    [ Event.Unknown "\x1b[3~"; Event.Up ]
-    (Event.parse "\x1b[3~\x1b[A");
+    [ KeyEvent.Unknown "\x1b[3~"; KeyEvent.Up ]
+    (KeyEvent.parse "\x1b[3~\x1b[A");
   Alcotest.(check (list key))
     "incomplete sequence"
-    [ Event.Unknown "\x1b[15" ]
-    (Event.parse "\x1b[15");
+    [ KeyEvent.Unknown "\x1b[15" ]
+    (KeyEvent.parse "\x1b[15");
   Alcotest.(check (list key))
     "invalid byte remains available"
-    [ Event.Unknown "\x1b["; Event.Enter ]
-    (Event.parse "\x1b[\n")
+    [ KeyEvent.Unknown "\x1b["; KeyEvent.Enter ]
+    (KeyEvent.parse "\x1b[\n")
 ;;
 
 let cmd_run () =
   let dispatched = ref [] in
   let quit = ref false in
   Cmd.run
-    (Cmd.batch [ Cmd.msg 1; Cmd.msg 2; Cmd.quit ])
+    (Cmd.batch [ Cmd.dispatch 1; Cmd.dispatch 2; Cmd.quit ])
     ~dispatch:(fun m -> dispatched := m :: !dispatched)
     ~on_quit:(fun () -> quit := true);
   Alcotest.(check (list int))
@@ -75,7 +75,7 @@ let sub_leaves () =
 (* A counter app: [init] dispatches three increments, then the loop settles. *)
 let loop_counts () =
   let app =
-    { init = 0, Cmd.batch [ Cmd.msg (); Cmd.msg (); Cmd.msg () ]
+    { init = 0, Cmd.batch [ Cmd.dispatch (); Cmd.dispatch (); Cmd.dispatch () ]
     ; update = (fun () n -> n + 1, Cmd.none)
     ; view = string_of_int
     ; subscriptions = (fun _ -> Sub.none)
@@ -89,7 +89,7 @@ let loop_counts () =
 (* A quit command must stop the loop and let [run_headless] return. *)
 let loop_quits () =
   let app =
-    { init = 0, Cmd.msg ()
+    { init = 0, Cmd.dispatch ()
     ; update = (fun () n -> n + 1, Cmd.quit)
     ; view = string_of_int
     ; subscriptions = (fun _ -> Sub.none)
@@ -420,7 +420,7 @@ let worker_lifecycle () =
        let worker =
          Sub.worker
            ~key:"worker"
-           ~on_stop:(fun () -> incr cleaned)
+           ~cleanup:(fun () -> incr cleaned)
            (fun _ ~dispatch ->
               incr started;
               if mode = "worker exception" then failwith "worker failed";
@@ -448,12 +448,12 @@ let worker_lifecycle () =
                then
                  Sub.worker
                    ~key:"replacement"
-                   ~on_stop:(fun () -> incr replacement)
+                   ~cleanup:(fun () -> incr replacement)
                    (fun _ ~dispatch:_ -> ())
                else
                  Sub.worker
                    ~key:"worker"
-                   ~on_stop:(fun () -> incr replacement)
+                   ~cleanup:(fun () -> incr replacement)
                    (fun _ ~dispatch:_ -> incr replacement))
          }
        in
@@ -506,7 +506,7 @@ let worker_wait_cleanup () =
                  Sub.batch
                    [ Sub.worker
                        ~key:"pipe"
-                       ~on_stop:(fun () ->
+                       ~cleanup:(fun () ->
                          incr cleaned;
                          Unix.close reader)
                        (fun _ ~dispatch:_ -> Troupe.await_readable reader)
@@ -539,7 +539,7 @@ let worker_process_roundtrip () =
       ignore (Unix.waitpid [] pid)
   in
   let worker =
-    Sub.worker ~key:"engine" ~on_stop:cleanup (fun self ~dispatch ->
+    Sub.worker ~key:"engine" ~cleanup (fun self ~dispatch ->
       let child_input, input = Unix.pipe ~cloexec:true () in
       let output, child_output = Unix.pipe ~cloexec:true () in
       let pid =

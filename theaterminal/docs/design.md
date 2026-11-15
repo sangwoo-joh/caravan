@@ -18,7 +18,7 @@ TEA는 UI를 네 조각으로 나눈다.
 여기에 두 개의 부수효과 통로가 붙는다.
 
 - **Cmd**: `update`가 런타임에 요청하는 부수효과. 후속 메시지를 되먹이거나
-  (`msg`), 프로그램을 끝낸다(`quit`).
+  (`dispatch`), 프로그램을 끝낸다(`quit`).
 - **Sub**: 프로그램이 살아있는 동안 듣는 외부 메시지원(키보드 `keys`, 주기적
   타이머 `every`).
 
@@ -31,7 +31,7 @@ TEA는 UI를 네 조각으로 나눈다.
         ▼                                      │
    update(msg, model) ──▶ (model', cmd) ──▶ view(model') ──▶ 화면
                               │
-                              └── Cmd (msg / quit)
+                              └── Cmd (dispatch / quit)
 ```
 
 ## 2. 액터 매핑
@@ -43,7 +43,7 @@ troupe가 주는 것은 **fiber마다 하나의 메일박스**와 선택적 `rec
   `update → view → render`를 반복한다. 모든 메시지가 이 한 곳으로 모이므로
   상태 갱신은 자연히 직렬화된다(경쟁 없음).
 - **입력 액터**: `await_readable(stdin)`으로 블록했다가, 읽은 바이트를
-  `Event.parse`로 키로 변환해 `keys` 매핑을 거쳐 런타임 메일박스로 보낸다.
+  `KeyEvent.parse`로 키로 변환해 `keys` 매핑을 거쳐 런타임 메일박스로 보낸다.
 - **타이머 액터**: `sleep` 루프를 돌며 `every`의 메시지를 런타임으로 보낸다.
 
 subscription 하나(leaf)당 액터 하나가 뜬다.
@@ -51,10 +51,10 @@ subscription 하나(leaf)당 액터 하나가 뜬다.
 ```mermaid
 flowchart LR
   KB[키보드 / stdin] -->|바이트| IN[입력 액터]
-  IN -->|Event.parse → keys → Msg| RT[런타임 액터<br/>model 소유]
+  IN -->|KeyEvent.parse → keys → Msg| RT[런타임 액터<br/>model 소유]
   TM[타이머 액터] -->|every → Msg| RT
   RT -->|view : 프레임 문자열| TERM[Terminal.render]
-  RT -. Cmd.msg .-> RT
+  RT -. Cmd.dispatch .-> RT
   RT -. Cmd.quit .-> EXIT[터미널 복원 후 종료]
 ```
 
@@ -67,7 +67,7 @@ sequenceDiagram
   participant RT as 런타임 액터
   participant T as 터미널
   U->>IN: 키 입력
-  IN->>IN: Event.parse → keys 매핑
+  IN->>IN: KeyEvent.parse → keys 매핑
   IN->>RT: send Msg (메일박스)
   RT->>RT: update msg model → (model', cmd)
   RT->>T: render (view model')
@@ -82,13 +82,13 @@ sequenceDiagram
 flowchart TD
   Theaterminal[Theaterminal<br/>app 타입 · run · 이벤트 루프] --> Cmd
   Theaterminal --> Sub
-  Theaterminal --> Event
+  Theaterminal --> KeyEvent
   Theaterminal --> Terminal
   Theaterminal --> Troupe
-  Sub --> Event
+  Sub --> KeyEvent
 ```
 
-- **`Event`**: 키 타입과 터미널 바이트 디코더(`parse`). 순수 함수라 단위 테스트가
+- **`KeyEvent`**: 키 타입과 터미널 바이트 디코더(`parse`). 순수 함수라 단위 테스트가
   쉽다.
 - **`Terminal`**: raw 모드 전환, 대체 화면, 프레임 그리기. 유일한 저수준 I/O.
 - **`Cmd`** / **`Sub`**: 추상 타입 + 조합자. 표현은 감추고, 런타임이 쓰는

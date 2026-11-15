@@ -27,28 +27,28 @@ let player_state () =
   Alcotest.(check bool)
     "thinking by default"
     true
-    (State.action start = State.Think);
-  let picked = unwrap (State.pick start 52) in
+    (State.action start = State.Unselect);
+  let picked = unwrap (State.select start 52) in
   Alcotest.(check bool)
     "selected square"
     true
-    (State.action picked = State.Pick 52);
+    (State.action picked = State.Select 52);
   Alcotest.(check bool)
     "old snapshot unchanged"
     true
-    (State.action start = State.Think);
+    (State.action start = State.Unselect);
   List.iter
     (fun square ->
        Alcotest.(check bool)
          "selection rejected"
          true
-         (Result.is_error (State.pick start square)))
+         (Result.is_error (State.select start square)))
     [ 12; 28; -1; 64 ];
   Alcotest.(check bool)
     "UCI rejected while picking"
     true
     (Result.is_error (Uci.prepare_move picked "e2e4"));
-  let thinking = State.think picked in
+  let thinking = State.unselect picked in
   let next = unwrap (Uci.prepare_move thinking "e2e4") in
   Alcotest.(check bool)
     "opponent move rejected even on opponent turn"
@@ -56,9 +56,9 @@ let player_state () =
     (Result.is_error (Uci.prepare_move next "e7e5"));
   let moved = unwrap (Logic.play picked (unwrap (Uci.move_of_string "e2e4"))) in
   Alcotest.(check bool)
-    "move restores think"
+    "move restores unselect"
     true
-    (State.action moved = State.Think);
+    (State.action moved = State.Unselect);
   let black = State.initial ~user_colour:Piece.Black () in
   Alcotest.(check bool)
     "colour does not change turn"
@@ -67,11 +67,11 @@ let player_state () =
   Alcotest.(check bool)
     "black can select black piece"
     true
-    (Result.is_ok (State.pick black 12));
+    (Result.is_ok (State.select black 12));
   Alcotest.(check bool)
     "black cannot select white piece"
     true
-    (Result.is_error (State.pick black 52));
+    (Result.is_error (State.select black 52));
   let black_turn =
     unwrap (Logic.play black (unwrap (Uci.move_of_string "e2e4")))
   in
@@ -83,7 +83,7 @@ let player_state () =
   Alcotest.(check bool)
     "action after moves"
     true
-    (State.action after_black = State.Think)
+    (State.action after_black = State.Unselect)
 ;;
 
 let uci () =
@@ -225,7 +225,7 @@ let engine_pipeline () =
        Alcotest.(check (list string))
          "both moves applied"
          [ "e2e4"; "e7e5" ]
-         (List.map Uci.move_to_string (State.moves result.state));
+         (List.map Uci.move_to_string (State.move_history result.state));
        Alcotest.(check (list string))
          "search info"
          [ "info depth 1" ]
@@ -279,12 +279,16 @@ let engine_pipeline () =
 let stockfish_pipeline executable () =
   let result =
     unwrap
-      (Stockfish.play_input ~movetime:20 ~executable (State.initial ()) "e2e4")
+      (Stockfish.play_input
+         ~movetime_ms:20
+         ~executable
+         (State.initial ())
+         "e2e4")
   in
   Alcotest.(check int)
     "player and engine moves"
     2
-    (List.length (State.moves result.state));
+    (List.length (State.move_history result.state));
   Alcotest.(check bool)
     "player turn restored"
     true
@@ -295,12 +299,12 @@ let stockfish_pipeline executable () =
     (Option.is_some result.bestmove);
   let custom = Test_logic.position "7k/P7/8/8/8/8/8/7K w - - 0 1" in
   let result =
-    unwrap (Stockfish.play_input ~movetime:20 ~executable custom "a7a8q")
+    unwrap (Stockfish.play_input ~movetime_ms:20 ~executable custom "a7a8q")
   in
   Alcotest.(check int)
     "custom position reply"
     2
-    (List.length (State.moves result.state))
+    (List.length (State.move_history result.state))
 ;;
 
 let () =

@@ -173,10 +173,10 @@ let close ?(pause = pause) engine =
     wait ())
 ;;
 
-let search ?(pause = pause) ?(skill = 5) ?(movetime = 1000) engine state =
+let search ?(pause = pause) ?(skill = 5) ?(movetime_ms = 1000) engine state =
   let ( let* ) = Result.bind in
   let* _ = Uci.command_to_string (Uci.Skill_level skill) in
-  let* _ = Uci.command_to_string (Uci.Go_movetime movetime) in
+  let* _ = Uci.command_to_string (Uci.Go_movetime movetime_ms) in
   let wait expected =
     let deadline = Unix.gettimeofday () +. 10. in
     let rec loop () =
@@ -197,9 +197,9 @@ let search ?(pause = pause) ?(skill = 5) ?(movetime = 1000) engine state =
   let* () = send engine Uci.Isready in
   let* () = wait Uci.Readyok in
   let* () = send engine (Uci.Position_state state) in
-  let* () = send engine (Uci.Go_movetime movetime) in
+  let* () = send engine (Uci.Go_movetime movetime_ms) in
   let deadline =
-    Unix.gettimeofday () +. (float_of_int movetime /. 1000.) +. 10.
+    Unix.gettimeofday () +. (float_of_int movetime_ms /. 1000.) +. 10.
   in
   let rec collect info =
     if Unix.gettimeofday () >= deadline
@@ -223,10 +223,10 @@ let search ?(pause = pause) ?(skill = 5) ?(movetime = 1000) engine state =
   collect []
 ;;
 
-let analyse ?(skill = 5) ?(movetime = 1000) ~executable state =
+let analyse ?(skill = 5) ?(movetime_ms = 1000) ~executable state =
   let ( let* ) = Result.bind in
   let* _ = Uci.command_to_string (Uci.Skill_level skill) in
-  let* _ = Uci.command_to_string (Uci.Go_movetime movetime) in
+  let* _ = Uci.command_to_string (Uci.Go_movetime movetime_ms) in
   match Logic.status state with
   | Checkmate _ | Draw _ -> Ok { state; bestmove = None; info = [] }
   | Playing | Check ->
@@ -236,7 +236,7 @@ let analyse ?(skill = 5) ?(movetime = 1000) ~executable state =
         if not engine.closed then terminate engine;
         ignore (wait engine))
       (fun () ->
-         let outcome = search ~skill ~movetime engine state in
+         let outcome = search ~skill ~movetime_ms engine state in
          let closed = close engine in
          match outcome, closed with
          | Error error, _ | _, Error error -> Error error
@@ -244,8 +244,8 @@ let analyse ?(skill = 5) ?(movetime = 1000) ~executable state =
          | Ok _, Ok _ -> Error "Stockfish exited unsuccessfully.")
 ;;
 
-let play_input ?(skill = 5) ?(movetime = 1000) ~executable state input =
+let play_input ?(skill = 5) ?(movetime_ms = 1000) ~executable state input =
   Result.bind
     (Uci.prepare_move state input)
-    (analyse ~skill ~movetime ~executable)
+    (analyse ~skill ~movetime_ms ~executable)
 ;;

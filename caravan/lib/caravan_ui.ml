@@ -30,7 +30,7 @@ type game =
 type screen =
   | Landing of int
   | Play of game
-  | Setting of int
+  | Settings of int
 
 type model =
   { screen : screen
@@ -78,7 +78,7 @@ let difficulty_name = function
 let difficulties = [| Easy; Normal; Hard |]
 
 let confirm = function
-  | Event.Enter | Event.Char ' ' -> true
+  | KeyEvent.Enter | KeyEvent.Char ' ' -> true
   | _ -> false
 ;;
 
@@ -137,7 +137,7 @@ let apply_move game (move : State.move) =
 ;;
 
 let place game move =
-  match State.pick game.state move.State.from_square with
+  match State.select game.state move.State.from_square with
   | Error error -> reject_move game error
   | Ok _ -> apply_move game move
 ;;
@@ -159,8 +159,8 @@ let computer_turn game =
 
 let select_or_place game =
   match State.action game.state with
-  | Think ->
-    (match State.pick game.state game.square with
+  | Unselect ->
+    (match State.select game.state game.square with
      | Error notice -> { game with notice }
      | Ok _ when State.turn game.state <> State.user_colour game.state ->
        { game with notice = "It is not your turn." }
@@ -174,13 +174,13 @@ let select_or_place game =
           ; shake = 0
           ; notice = "Choose an x or an opponent's piece; same square cancels."
           }))
-  | Pick square when square = game.square ->
+  | Select square when square = game.square ->
     { game with
-      state = State.think game.state
+      state = State.unselect game.state
     ; notice = "Selection cancelled."
     ; shake = 0
     }
-  | Pick square ->
+  | Select square ->
     let promotion =
       match State.piece_at game.state square with
       | Some piece
@@ -205,21 +205,22 @@ let board_key key game =
     { game with square = orient game.state displayed }
   in
   match key with
-  | Event.Up -> move_cursor ((max 0 (row - 1) * 8) + col)
-  | Event.Down -> move_cursor ((min 7 (row + 1) * 8) + col)
-  | Event.Left -> move_cursor ((row * 8) + max 0 (col - 1))
-  | Event.Right when col = 7 -> { game with focus = Save }
-  | Event.Right -> move_cursor (displayed + 1)
-  | Event.Backspace when State.action game.state = Think ->
+  | KeyEvent.Up -> move_cursor ((max 0 (row - 1) * 8) + col)
+  | KeyEvent.Down -> move_cursor ((min 7 (row + 1) * 8) + col)
+  | KeyEvent.Left -> move_cursor ((row * 8) + max 0 (col - 1))
+  | KeyEvent.Right when col = 7 -> { game with focus = Save }
+  | KeyEvent.Right -> move_cursor (displayed + 1)
+  | KeyEvent.Backspace when State.action game.state = Unselect ->
     let n = String.length game.input in
     { game with input = String.sub game.input 0 (max 0 (n - 1)) }
-  | Event.Enter when State.action game.state = Think && game.input <> "" ->
+  | KeyEvent.Enter when State.action game.state = Unselect && game.input <> ""
+    ->
     (match Uci.move_of_string game.input with
      | Error notice -> { game with notice }
      | Ok move -> place game move)
   | key when confirm key -> select_or_place game
-  | Event.Char c
-    when State.action game.state = Think
+  | KeyEvent.Char c
+    when State.action game.state = Unselect
          && String.contains "abcdefgh12345678qrbn" c ->
     if String.length game.input < 5
     then { game with input = game.input ^ String.make 1 c }
@@ -227,17 +228,17 @@ let board_key key game =
   | _ -> game
 ;;
 
-let update key model =
-  if key = Event.Unknown "\003"
+let update_key key model =
+  if key = KeyEvent.Unknown "\003"
   then model, Cmd.quit
   else (
     let model, quit =
       match model.screen with
       | Landing cursor ->
         (match key with
-         | Event.Up ->
+         | KeyEvent.Up ->
            { model with screen = Landing (max 0 (cursor - 1)) }, false
-         | Event.Down ->
+         | KeyEvent.Down ->
            { model with screen = Landing (min 3 (cursor + 1)) }, false
          | key when confirm key ->
            (match cursor with
@@ -277,15 +278,15 @@ let update key model =
                 | Normal -> 1
                 | Hard -> 2
               in
-              { model with screen = Setting cursor; notice = "" }, false
+              { model with screen = Settings cursor; notice = "" }, false
             | _ -> model, true)
          | _ -> model, false)
-      | Setting cursor ->
+      | Settings cursor ->
         (match key with
-         | Event.Up ->
-           { model with screen = Setting (max 0 (cursor - 1)) }, false
-         | Event.Down ->
-           { model with screen = Setting (min 5 (cursor + 1)) }, false
+         | KeyEvent.Up ->
+           { model with screen = Settings (max 0 (cursor - 1)) }, false
+         | KeyEvent.Down ->
+           { model with screen = Settings (min 5 (cursor + 1)) }, false
          | key when confirm key ->
            if cursor = 5
            then { model with screen = Landing 2 }, false
@@ -309,11 +310,11 @@ let update key model =
              }
            in
            { model with screen = Play game; saved = Some game }, false
-         | (Save | Main_menu), Event.Left ->
+         | (Save | Main_menu), KeyEvent.Left ->
            { model with screen = Play { game with focus = Board } }, false
-         | (Save | Main_menu), Event.Up ->
+         | (Save | Main_menu), KeyEvent.Up ->
            { model with screen = Play { game with focus = Save } }, false
-         | (Save | Main_menu), Event.Down ->
+         | (Save | Main_menu), KeyEvent.Down ->
            { model with screen = Play { game with focus = Main_menu } }, false
          | Board, key ->
            { model with screen = Play (board_key key game) }, false
@@ -349,14 +350,14 @@ let landing cursor notice =
       "\n"
       (List.mapi
          (fun i label -> menu_item (cursor = i) label)
-         [ "Play"; "Load"; "Setting"; "Exit" ])
+         [ "Play"; "Load"; "Settings"; "Exit" ])
   ^ "\n  "
   ^ notice
   ^ "\n  Up/Down: choose   Enter/Space: confirm   Ctrl+C: quit\n"
 ;;
 
-let setting cursor difficulty user_colour =
-  "\n  Caravan / Setting\n\n  Difficulty\n\n"
+let settings cursor difficulty user_colour =
+  "\n  Caravan / Settings\n\n  Difficulty\n\n"
   ^ String.concat
       "\n"
       (List.init 3 (fun i ->
@@ -382,16 +383,16 @@ let setting cursor difficulty user_colour =
 let play game =
   let destinations =
     match State.action game.state with
-    | Think -> []
-    | Pick source ->
+    | Unselect -> []
+    | Select source ->
       Logic.legal_moves game.state
       |> List.filter_map (fun (move : State.move) ->
         if move.from_square = source then Some move.to_square else None)
   in
   let selected =
     match State.action game.state with
-    | Think -> None
-    | Pick square -> Some square
+    | Unselect -> None
+    | Select square -> Some square
   in
   let side row =
     match row with
@@ -404,8 +405,8 @@ let play game =
       "  Action: "
       ^
         (match State.action game.state with
-        | Think -> "think"
-        | Pick _ -> "pick")
+        | Unselect -> "unselect"
+        | Select _ -> "select")
     | 3 -> menu_item (game.focus = Save) "[ Save ]"
     | 4 -> menu_item (game.focus = Main_menu) "[ Main menu ]"
     | 5 ->
@@ -477,11 +478,11 @@ let view model =
   match model.screen with
   | Landing cursor -> landing cursor model.notice
   | Play game -> play game
-  | Setting cursor -> setting cursor model.difficulty model.user_colour
+  | Settings cursor -> settings cursor model.difficulty model.user_colour
 ;;
 
 type message =
-  | Key of Event.key
+  | Key of KeyEvent.key
   | Shake_tick
   | Engine_result of State.t * (State.move, string) result
 
@@ -490,7 +491,7 @@ let make_app ~executable =
   ; update =
       (fun message model ->
         match message with
-        | Key key -> update key model
+        | Key key -> update_key key model
         | Engine_result (expected, result) ->
           let model =
             match model.screen with
@@ -548,7 +549,7 @@ let make_app ~executable =
                 Option.iter Stockfish.terminate !process;
                 process := None
               in
-              Sub.worker ~key:"stockfish" ~on_stop:cleanup (fun _ ~dispatch ->
+              Sub.worker ~key:"stockfish" ~cleanup (fun _ ~dispatch ->
                 let result =
                   match Stockfish.start executable with
                   | Error error -> Error error
@@ -561,7 +562,7 @@ let make_app ~executable =
                       Stockfish.search
                         ~pause:Troupe.sleep
                         ~skill:(skill_level game.difficulty)
-                        ~movetime:1000
+                        ~movetime_ms:1000
                         engine
                         game.state
                     in

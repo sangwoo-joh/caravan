@@ -237,7 +237,7 @@ sequenceDiagram
 보낼 수 있지만, 내 메일박스는 나만 읽을 수 있다"를 타입 수준의 보장으로 만듭니다.
 `address : 'msg self -> 'msg Address.t`가 그 일방향 문입니다.
 
-### 명명: `Address`, `spawn`, `perform`
+### 명명: `Address`, `spawn`, `run`
 
 이 라이브러리는 연극 *troupe(극단)*를 테마로 하지만, 핵심 연산은 동작을
 쉽게 알아볼 수 있는 일반적인 용어를 사용합니다:
@@ -245,8 +245,8 @@ sequenceDiagram
 - **`Address`** (`Pid`/`Ref` 대신) — 메시지를 보내는 곳이며, `Ref`는 OCaml의
   `ref`와도 충돌합니다.
 - **`spawn`** — 새 액터를 생성하고 실행합니다.
-- **`perform`** (궁극의 `run` 계열 동사 테마) — 효과의 어휘와 무대 은유 양쪽에
-  모두 들어맞습니다.
+- **`run`** — 스케줄러 안에서 액터를 실행합니다. `Effect.perform`은 내부에서
+  스케줄러에 효과 처리를 요청하는 OCaml 연산이며, Troupe의 공개 API가 아닙니다.
 
 `send`와 `receive`는 문자 그대로 유지합니다 — 핵심적이고 보편적으로 이해되기
 때문입니다.

@@ -7,7 +7,7 @@
     {!Cmd.t}. Keyboard and timer subscriptions run as their own actors, feeding
     messages into the runtime's mailbox. *)
 
-module Event = Event
+module KeyEvent = KeyEvent
 module Terminal = Terminal
 module Cmd = Cmd
 module Sub = Sub

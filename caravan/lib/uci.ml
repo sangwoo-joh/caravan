@@ -132,7 +132,7 @@ let fen state =
     ; Black, Queenside, "q"
     ]
     |> List.filter_map (fun (colour, side, text) ->
-      if State.can_castle state colour side then Some text else None)
+      if State.has_castling_right state colour side then Some text else None)
     |> String.concat ""
   in
   Printf.sprintf
@@ -154,7 +154,7 @@ let position_command state =
     | Some previous -> root previous
   in
   let position = "position fen " ^ fen (root state) in
-  match State.moves state with
+  match State.move_history state with
   | [] -> position
   | moves ->
     position ^ " moves " ^ String.concat " " (List.map move_to_string moves)
@@ -162,13 +162,13 @@ let position_command state =
 
 let prepare_move state input =
   match State.action state with
-  | Pick _ ->
+  | Select _ ->
     Error "Finish placing your selected piece before entering a UCI move."
-  | Think ->
+  | Unselect ->
     (match move_of_string (String.trim input) with
      | Error error -> Error error
      | Ok move ->
-       (match State.pick state move.from_square with
+       (match State.select state move.from_square with
         | Error error -> Error error
         | Ok _ -> Logic.play state move))
 ;;

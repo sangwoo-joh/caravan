@@ -46,9 +46,9 @@ let () =
       subscriptions =
         (fun _ ->
           Sub.keys (function
-            | Event.Up -> Some Up
-            | Event.Down -> Some Down
-            | Event.Char ' ' -> Some Toggle
-            | Event.Char 'q' -> Some Quit
+            | KeyEvent.Up -> Some Up
+            | KeyEvent.Down -> Some Down
+            | KeyEvent.Char ' ' -> Some Toggle
+            | KeyEvent.Char 'q' -> Some Quit
             | _ -> None));
     }

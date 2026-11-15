@@ -9,8 +9,8 @@ type castle_side =
   | Queenside
 
 type action =
-  | Think
-  | Pick of int
+  | Unselect
+  | Select of int
 
 type t =
   { board : Piece.t option array
@@ -100,7 +100,7 @@ let create
       { board = Array.copy board
       ; turn
       ; user_colour
-      ; action = Think
+      ; action = Unselect
       ; castling_rights = List.sort_uniq compare castling_rights
       ; en_passant
       ; halfmove_clock
@@ -129,7 +129,7 @@ let initial ?(user_colour = Piece.White) () =
   { board
   ; turn = White
   ; user_colour
-  ; action = Think
+  ; action = Unselect
   ; castling_rights =
       [ White, Kingside; White, Queenside; Black, Kingside; Black, Queenside ]
   ; en_passant = None
@@ -144,9 +144,9 @@ let piece_at state square = state.board.(square)
 let turn state = state.turn
 let user_colour state = state.user_colour
 let action state = state.action
-let think state = { state with action = Think }
+let unselect state = { state with action = Unselect }
 
-let pick state square =
+let select state square =
   if square < 0 || square >= 64
   then Error "Square must be between 0 and 63."
   else (
@@ -154,17 +154,21 @@ let pick state square =
     | None -> Error "Select a square containing your piece."
     | Some piece when piece.colour <> state.user_colour ->
       Error "You can only select your own pieces."
-    | Some _ -> Ok { state with action = Pick square })
+    | Some _ -> Ok { state with action = Select square })
 ;;
 
 let castling_rights state = state.castling_rights
-let can_castle state colour side = List.mem (colour, side) state.castling_rights
+
+let has_castling_right state colour side =
+  List.mem (colour, side) state.castling_rights
+;;
+
 let en_passant state = state.en_passant
 let halfmove_clock state = state.halfmove_clock
 let fullmove_number state = state.fullmove_number
 let previous state = state.previous
 
-let moves state =
+let move_history state =
   let rec collect state acc =
     match state.previous, state.last_move with
     | Some previous, Some move -> collect previous (move :: acc)
@@ -186,7 +190,7 @@ let advance_unchecked
   { board
   ; turn = (if state.turn = Piece.White then Piece.Black else Piece.White)
   ; user_colour = state.user_colour
-  ; action = Think
+  ; action = Unselect
   ; castling_rights
   ; en_passant
   ; halfmove_clock
