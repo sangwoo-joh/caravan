@@ -2,7 +2,7 @@
 
     Each actor runs as its own fiber, processes messages from a private mailbox,
     and blocks in {!receive} until a matching message arrives. The scheduler in
-    {!run} interprets the effects performed by [cast], [send], and [receive].
+    {!run} interprets the effects performed by [spawn], [send], and [receive].
 
     This module re-exports {!Actor} (the actor-facing API), {!Reactor} (I/O
     backends), and {!Scheduler} (the effect handler), plus a default {!run}. *)
@@ -24,9 +24,9 @@ type 'msg self
     {!receive}. *)
 type 'msg behaviour = 'msg self -> unit
 
-(** [cast behaviour] spawns a new actor running [behaviour] and returns its
+(** [spawn behaviour] spawns a new actor running [behaviour] and returns its
     address. *)
-val cast : 'msg behaviour -> 'msg Address.t
+val spawn : 'msg behaviour -> 'msg Address.t
 
 (** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
     stopped or finished actor are discarded. *)
@@ -65,5 +65,5 @@ module Scheduler = Scheduler
 (** [run main] runs [main] as the initial fiber under a fresh scheduler backed
     by {!Reactor.Select}, and returns once every actor is idle — blocked with no
     matching message, and with no outstanding descriptor or timer waits. [main]
-    may {!cast} actors and {!send} to them. *)
+    may {!spawn} actors and {!send} to them. *)
 val run : (unit -> unit) -> unit

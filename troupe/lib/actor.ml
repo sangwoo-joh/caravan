@@ -8,7 +8,7 @@ module Address = struct
   let pp fmt a = Format.fprintf fmt "<actor:%d>" a.Core.id
 end
 
-let cast behaviour = Effect.perform (Core.Cast behaviour)
+let spawn behaviour = Effect.perform (Core.Spawn behaviour)
 let send addr msg = Effect.perform (Core.Send (addr, msg))
 
 let receive self ?(matching = fun _ -> true) () =

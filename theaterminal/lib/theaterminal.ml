@@ -45,7 +45,7 @@ let spawn_source source ~runtime =
   | Keys f ->
     let callback = ref f in
     let actor =
-      Troupe.cast (fun _ ->
+      Troupe.spawn (fun _ ->
         let buf = Bytes.create 1024 in
         let rec loop () =
           Troupe.await_readable Unix.stdin;
@@ -72,7 +72,7 @@ let spawn_source source ~runtime =
   | Every (seconds, f) ->
     let callback = ref f in
     let actor =
-      Troupe.cast (fun _ ->
+      Troupe.spawn (fun _ ->
         let rec loop () =
           Troupe.sleep seconds;
           Troupe.send runtime (!callback ());
@@ -96,7 +96,7 @@ let spawn_source source ~runtime =
         on_stop ())
     in
     let actor =
-      Troupe.cast (fun self ->
+      Troupe.spawn (fun self ->
         Fun.protect ~finally:cleanup (fun () ->
           run self ~dispatch:(Troupe.send runtime)))
     in
@@ -118,7 +118,7 @@ let run_app ~render ~on_quit app =
     (fun () ->
        Troupe.run (fun () ->
          ignore
-           (Troupe.cast (fun self ->
+           (Troupe.spawn (fun self ->
               let runtime = Troupe.address self in
               let dispatch m = Troupe.send runtime m in
               let stop = ref false in

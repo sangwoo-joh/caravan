@@ -2,7 +2,7 @@ let counter () =
   let result = ref 0 in
   Troupe.run (fun () ->
     let c =
-      Troupe.cast (fun self ->
+      Troupe.spawn (fun self ->
         let rec loop n =
           match Troupe.receive self () with
           | `Inc -> loop (n + 1)
@@ -21,7 +21,7 @@ let selective_receive () =
   let order = ref [] in
   Troupe.run (fun () ->
     let a =
-      Troupe.cast (fun self ->
+      Troupe.spawn (fun self ->
         let x = Troupe.receive self ~matching:(fun s -> s = "B") () in
         order := x :: !order;
         let y = Troupe.receive self () in
@@ -39,11 +39,11 @@ let request_reply () =
   let answer = ref "" in
   Troupe.run (fun () ->
     let server =
-      Troupe.cast (fun self ->
+      Troupe.spawn (fun self ->
         match Troupe.receive self () with
         | `Ping reply_to -> Troupe.send reply_to "pong")
     in
-    let client = Troupe.cast (fun self -> answer := Troupe.receive self ()) in
+    let client = Troupe.spawn (fun self -> answer := Troupe.receive self ()) in
     Troupe.send server (`Ping client));
   Alcotest.(check string) "client received reply via its address" "pong" !answer
 ;;
@@ -52,9 +52,9 @@ let wake_after_park () =
   (* [a] runs first with an empty mailbox and blocks; [b] wakes it later. *)
   let got = ref "" in
   Troupe.run (fun () ->
-    let a = Troupe.cast (fun self -> got := Troupe.receive self ()) in
+    let a = Troupe.spawn (fun self -> got := Troupe.receive self ()) in
     let b =
-      Troupe.cast (fun self ->
+      Troupe.spawn (fun self ->
         let _ = Troupe.receive self () in
         Troupe.send a "woke")
     in
@@ -78,14 +78,14 @@ let await_readable run () =
   let r, w = Unix.pipe () in
   run (fun () ->
     let _ : unit Troupe.Address.t =
-      Troupe.cast (fun (_ : unit Troupe.self) ->
+      Troupe.spawn (fun (_ : unit Troupe.self) ->
         Troupe.await_readable r;
         let buf = Bytes.create 16 in
         let n = Unix.read r buf 0 16 in
         got := Bytes.sub_string buf 0 n)
     in
     let _ : unit Troupe.Address.t =
-      Troupe.cast (fun (_ : unit Troupe.self) ->
+      Troupe.spawn (fun (_ : unit Troupe.self) ->
         ignore (Unix.write_substring w "hi" 0 2))
     in
     ());
@@ -109,13 +109,13 @@ let simultaneous_readers run () =
          List.iter
            (fun (r, _) ->
               ignore
-                (Troupe.cast (fun _ ->
+                (Troupe.spawn (fun _ ->
                    Troupe.await_readable r;
                    let buf = Bytes.create 1 in
                    received := !received + Unix.read r buf 0 1)))
            pipes;
          ignore
-           (Troupe.cast (fun _ ->
+           (Troupe.spawn (fun _ ->
               List.iter
                 (fun (_, w) -> ignore (Unix.write_substring w "x" 0 1))
                 pipes)));
@@ -124,9 +124,9 @@ let simultaneous_readers run () =
 
 let addresses_across_runs () =
   let old = ref None in
-  Troupe.run (fun () -> old := Some (Troupe.cast (fun _ -> ())));
+  Troupe.run (fun () -> old := Some (Troupe.spawn (fun _ -> ())));
   Troupe.run (fun () ->
-    let current = Troupe.cast (fun _ -> ()) in
+    let current = Troupe.spawn (fun _ -> ()) in
     Alcotest.(check bool)
       "address equals itself"
       true
@@ -141,8 +141,8 @@ let stop_old_addresses run () =
   let old_timer = ref None
   and old_reader = ref None in
   run (fun () ->
-    old_timer := Some (Troupe.cast (fun _ -> ()));
-    old_reader := Some (Troupe.cast (fun _ -> ())));
+    old_timer := Some (Troupe.spawn (fun _ -> ()));
+    old_reader := Some (Troupe.spawn (fun _ -> ())));
   let r, w = Unix.pipe () in
   Fun.protect
     ~finally:(fun () ->
@@ -153,11 +153,11 @@ let stop_old_addresses run () =
        and reader_fired = ref false in
        run (fun () ->
          ignore
-           (Troupe.cast (fun _ ->
+           (Troupe.spawn (fun _ ->
               Troupe.sleep 0.01;
               timer_fired := true));
          ignore
-           (Troupe.cast (fun _ ->
+           (Troupe.spawn (fun _ ->
               Troupe.await_readable r;
               reader_fired := true));
          Troupe.sleep 0.;
@@ -181,11 +181,11 @@ let waits_during_message_traffic run () =
        and exchanges = ref 0 in
        run (fun () ->
          ignore
-           (Troupe.cast (fun _ ->
+           (Troupe.spawn (fun _ ->
               Troupe.sleep 0.;
               timer_fired := true));
          ignore
-           (Troupe.cast (fun _ ->
+           (Troupe.spawn (fun _ ->
               Troupe.await_readable r;
               reader_fired := true));
          let peer = ref None in
@@ -199,9 +199,9 @@ let waits_during_message_traffic run () =
              exchange self other)
          in
          let a =
-           Troupe.cast (fun self -> exchange self (fun () -> Option.get !peer))
+           Troupe.spawn (fun self -> exchange self (fun () -> Option.get !peer))
          in
-         let b = Troupe.cast (fun self -> exchange self (fun () -> a)) in
+         let b = Troupe.spawn (fun self -> exchange self (fun () -> a)) in
          peer := Some b;
          Troupe.send a ();
          ignore (Unix.write_substring w "x" 0 1));
@@ -215,12 +215,12 @@ let timers_order run () =
   let log = ref [] in
   run (fun () ->
     let _ : unit Troupe.Address.t =
-      Troupe.cast (fun (_ : unit Troupe.self) ->
+      Troupe.spawn (fun (_ : unit Troupe.self) ->
         Troupe.sleep 0.03;
         log := "slow" :: !log)
     in
     let _ : unit Troupe.Address.t =
-      Troupe.cast (fun (_ : unit Troupe.self) ->
+      Troupe.spawn (fun (_ : unit Troupe.self) ->
         Troupe.sleep 0.005;
         log := "fast" :: !log)
     in
@@ -237,7 +237,7 @@ let stop_cancels_sleeping_actor () =
   let fired = ref false in
   Troupe.run (fun () ->
     let a =
-      Troupe.cast (fun _ ->
+      Troupe.spawn (fun _ ->
         Troupe.sleep 2.0;
         fired := true)
     in
@@ -250,7 +250,7 @@ let stop_cancels_sleeping_actor () =
 let stop_before_first_run () =
   let fired = ref false in
   Troupe.run (fun () ->
-    let a = Troupe.cast (fun _ -> fired := true) in
+    let a = Troupe.spawn (fun _ -> fired := true) in
     Troupe.stop a);
   Alcotest.(check bool) "actor stopped before running never ran" false !fired
 ;;
@@ -273,7 +273,7 @@ let self_stop wait () =
   and resumed = ref false in
   S.run (fun () ->
     ignore
-      (Troupe.cast (fun self ->
+      (Troupe.spawn (fun self ->
          Troupe.stop (Troupe.address self);
          reached_wait := true;
          wait ();
@@ -292,7 +292,7 @@ let finished_mailbox mode () =
   in
   (try
      Troupe.run (fun () ->
-       let actor = Troupe.cast (fun _ -> if mode = `Raise then raise Exit) in
+       let actor = Troupe.spawn (fun _ -> if mode = `Raise then raise Exit) in
        retained := Some actor;
        send_payload actor 0;
        if mode = `Stop then Troupe.stop actor)
@@ -313,7 +313,7 @@ let matching_exception parked () =
   and sender_finished = ref false in
   Troupe.run (fun () ->
     let actor =
-      Troupe.cast (fun self ->
+      Troupe.spawn (fun self ->
         (try
            ignore
              (Troupe.receive
@@ -342,9 +342,9 @@ let receive_owner () =
   let predicate_called = ref false in
   Troupe.run (fun () ->
     ignore
-      (Troupe.cast (fun self ->
+      (Troupe.spawn (fun self ->
          ignore
-           (Troupe.cast (fun _ ->
+           (Troupe.spawn (fun _ ->
               try
                 Troupe.receive
                   self
@@ -354,7 +354,7 @@ let receive_owner () =
                   ()
               with
               | Invalid_argument _ -> rejected := true));
-         ignore (Troupe.cast (fun _ -> Troupe.send (Troupe.address self) ()));
+         ignore (Troupe.spawn (fun _ -> Troupe.send (Troupe.address self) ()));
          Troupe.receive self ();
          owner_received := true)));
   Alcotest.(check bool) "foreign receive rejected in caller" true !rejected;

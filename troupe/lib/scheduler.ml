@@ -95,7 +95,7 @@ module Make (R : Reactor.S) = struct
         ; effc =
             (fun (type b) (eff : b Effect.t) ->
               match eff with
-              | Core.Cast behaviour ->
+              | Core.Spawn behaviour ->
                 Some
                   (fun (k : (b, unit) Effect.Deep.continuation) ->
                     let c = fresh () in

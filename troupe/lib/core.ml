@@ -17,7 +17,7 @@ type 'msg self = 'msg cell
 type 'msg behaviour = 'msg self -> unit
 
 type _ Effect.t +=
-  | Cast : 'msg behaviour -> 'msg cell Effect.t
+  | Spawn : 'msg behaviour -> 'msg cell Effect.t
   | Send : 'msg cell * 'msg -> unit Effect.t
   | Receive : 'msg cell * ('msg -> bool) -> 'msg Effect.t
   | Await_readable : Unix.file_descr -> unit Effect.t

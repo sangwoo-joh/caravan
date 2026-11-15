@@ -21,9 +21,9 @@ type 'msg self
     {!receive}. *)
 type 'msg behaviour = 'msg self -> unit
 
-(** [cast behaviour] spawns a new actor running [behaviour] and returns its
+(** [spawn behaviour] spawns a new actor running [behaviour] and returns its
     address. *)
-val cast : 'msg behaviour -> 'msg Address.t
+val spawn : 'msg behaviour -> 'msg Address.t
 
 (** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
     stopped or finished actor are discarded. *)

@@ -3,7 +3,7 @@
 Troupe는 대수적 효과(algebraic effects) 위에 구축한 OCaml 5용 소형 액터 모델
 라이브러리입니다. 각 액터는 자신만의 파이버(fiber)로 실행되고, 전용 메일박스를
 소유하며, 조건에 맞는 메시지가 도착할 때까지 *선택적 수신(selective receive)*
-상태로 블록됩니다. 단일 스케줄러가 액터들이 수행(perform)하는 효과(`cast`,
+상태로 블록됩니다. 단일 스케줄러가 액터들이 수행(perform)하는 효과(`spawn`,
 `send`, `receive`, 그리고 I/O 대기)를 해석하므로, 액터 코드는 스케줄링에 대한
 고민에서 자유롭습니다.
 
@@ -49,7 +49,7 @@ OCaml 5 효과 설계 지침에서 빌려 온 원칙입니다. 가장자리의 �
 lib/
 ├── mailbox.mli/.ml   # FIFO queue with selective removal
 ├── core.ml           # shared cell type + private effects (internal, no .mli)
-├── actor.mli/.ml     # self, behaviour, Address, and the verbs (cast/send/receive/…)
+├── actor.mli/.ml     # self, behaviour, Address, and the verbs (spawn/send/receive/…)
 ├── reactor.mli/.ml   # module type S + Reactor.Select (Unix.select) / Reactor.Poll (iomux)
 ├── scheduler.mli/.ml # Scheduler.Make (R : Reactor.S) — the effect handler
 └── troupe.mli/.ml    # re-exports Actor, Reactor, Scheduler + a default run
@@ -93,7 +93,7 @@ end
 type 'msg self                                  (* receive capability *)
 type 'msg behaviour = 'msg self -> unit
 
-val cast    : 'msg behaviour -> 'msg Address.t
+val spawn   : 'msg behaviour -> 'msg Address.t
 val send    : 'msg Address.t -> 'msg -> unit
 val receive : 'msg self -> ?matching:('msg -> bool) -> unit -> 'msg
 val address : 'msg self -> 'msg Address.t
@@ -116,7 +116,7 @@ val run : (unit -> unit) -> unit                (* = Make (Reactor.Select).run *
 
 ```ocaml
 type _ Effect.t +=
-  | Cast           : 'msg behaviour -> 'msg cell Effect.t
+  | Spawn          : 'msg behaviour -> 'msg cell Effect.t
   | Send           : 'msg cell * 'msg -> unit Effect.t
   | Receive        : 'msg cell * ('msg -> bool) -> 'msg Effect.t
   | Await_readable : Unix.file_descr -> unit Effect.t
@@ -144,7 +144,7 @@ graph LR
     reactor["Reactor backend"]
     timers[("timers list")]
 
-    behaviour -- "perform Cast / Send / Receive / Await_readable / Sleep / Stop" --> handler
+    behaviour -- "perform Spawn / Send / Receive / Await_readable / Sleep / Stop" --> handler
     handler -- "push / take" --> mb
     handler -- "add_reader / remove_reader / wait" --> reactor
     handler -- "record deadline" --> timers
@@ -183,7 +183,7 @@ flowchart TD
     R --> F[fire expired timers] --> L
 ```
 
-`cast`는 메일박스와 `Address`를 새로 만들고 자식의 파이버를 큐에 넣습니다. `send`는
+`spawn`은 메일박스와 `Address`를 새로 만들고 자식의 파이버를 큐에 넣습니다. `send`는
 대상 메일박스에 밀어 넣고, 대상이 조건에 맞는 필터로 파킹되어 있으면 그 재개를 큐에
 넣습니다. `receive`는 메일박스를 스캔하여, 적중 시 즉시 재개하고, 실패 시 파킹합니다.
 보낼 수 있는 발신자가 없는 메시지에 파킹된 액터는 그저 영원히 기다립니다 — 그래도
@@ -237,15 +237,14 @@ sequenceDiagram
 보낼 수 있지만, 내 메일박스는 나만 읽을 수 있다"를 타입 수준의 보장으로 만듭니다.
 `address : 'msg self -> 'msg Address.t`가 그 일방향 문입니다.
 
-### 명명: `Address`, `cast`, `perform`
+### 명명: `Address`, `spawn`, `perform`
 
-우리는 Erlang의 *구조*는 따르되 그 명명은 따르지 않습니다. 이 라이브러리는 연극
-*troupe(극단)*를 테마로 하므로, 이름은 은어보다는 문자적이면서도 함축적인 쪽으로
-기울입니다:
+이 라이브러리는 연극 *troupe(극단)*를 테마로 하지만, 핵심 연산은 동작을
+쉽게 알아볼 수 있는 일반적인 용어를 사용합니다:
 
 - **`Address`** (`Pid`/`Ref` 대신) — 메시지를 보내는 곳이며, `Ref`는 OCaml의
   `ref`와도 충돌합니다.
-- **`cast`** (`spawn` 대신) — 액터를 극단으로 *배역 결정(cast)*합니다.
+- **`spawn`** — 새 액터를 생성하고 실행합니다.
 - **`perform`** (궁극의 `run` 계열 동사 테마) — 효과의 어휘와 무대 은유 양쪽에
   모두 들어맞습니다.
 
@@ -320,7 +319,7 @@ continuation을 밖에서 되살릴 수 없으므로, 취소는 **continuation�
 
 ### 범위: 리액터는 미뤘다가, 실제 소비자와 함께 만들었다
 
-액터 코어는 I/O **없이** 먼저 만들어졌습니다 — `cast`/`send`/`receive`와
+액터 코어는 I/O **없이** 먼저 만들어졌습니다 — `spawn`/`send`/`receive`와
 정지 상태까지의 실행(run-to-quiescence)에는 I/O가 필요 없습니다. 리액터는 투기적으로
 만들지 않고, 진짜 소비자(파이프와 타이머를 구동하는 테스트)를 줄 수 있게 되었을 때
 비로소 추가했습니다. `await_readable`(stdin)과 `sleep`(틱 구독)을 실제로 소비할
@@ -358,7 +357,7 @@ TUI 계층이 그다음 그런 단계입니다.
 구현 및 테스트 완료(`dune build`, `dune test`):
 
 - FIFO와 선택적 제거를 갖춘 메일박스.
-- 액터당 파이버 스케줄러: `cast`, `send`, 선택적 `receive`, 파킹/깨우기,
+- 액터당 파이버 스케줄러: `spawn`, `send`, 선택적 `receive`, 파킹/깨우기,
   정지 상태까지의 실행.
 - 두 백엔드를 갖춘 `Reactor.S` — `Reactor.Select`(기본)와 `Reactor.Poll`(iomux);
   `Scheduler.Make` 펑터; 소비자가 백엔드를 고를 수 있도록 재노출된 `Reactor`;

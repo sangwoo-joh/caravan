@@ -555,7 +555,7 @@ let make_app ~executable =
                   | Ok engine ->
                     process := Some engine;
                     ignore
-                      (Troupe.cast (fun _ ->
+                      (Troupe.spawn (fun _ ->
                          ignore (Stockfish.wait ~pause:Troupe.sleep engine)));
                     let result =
                       Stockfish.search
