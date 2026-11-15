@@ -21,6 +21,8 @@ type 'msg self
     {!receive}. *)
 type 'msg behaviour = 'msg self -> unit
 
+val create : unit -> 'msg Core.cell
+
 (** [spawn behaviour] spawns a new actor running [behaviour] and returns its
     address. *)
 val spawn : 'msg behaviour -> 'msg Address.t

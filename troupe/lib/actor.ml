@@ -1,6 +1,17 @@
 type 'msg self = 'msg Core.self
 type 'msg behaviour = 'msg Core.behaviour
 
+let next_id = Atomic.make 0
+
+let create () =
+  { Core.id = Atomic.fetch_and_add next_id 1 + 1
+  ; identity = ref ()
+  ; mailbox = Mailbox.create ()
+  ; waiting = None
+  ; alive = true
+  }
+;;
+
 module Address = struct
   type 'msg t = 'msg Core.cell
 

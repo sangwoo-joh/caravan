@@ -4,16 +4,6 @@ module Make (R : Reactor.S) = struct
   type packed = Packed : 'a Core.cell -> packed
 
   let run main =
-    let next_id = ref 0 in
-    let fresh () =
-      incr next_id;
-      { Core.id = !next_id
-      ; identity = ref ()
-      ; mailbox = Mailbox.create ()
-      ; waiting = None
-      ; alive = true
-      }
-    in
     let run_queue = Queue.create () in
     let enqueue f = Queue.push f run_queue in
     let reactor = R.create () in
@@ -98,7 +88,7 @@ module Make (R : Reactor.S) = struct
               | Core.Spawn behaviour ->
                 Some
                   (fun (k : (b, unit) Effect.Deep.continuation) ->
-                    let c = fresh () in
+                    let c = Actor.create () in
                     enqueue (fun () ->
                       if c.Core.alive then run_behaviour behaviour c);
                     Effect.Deep.continue k c)
@@ -147,7 +137,7 @@ module Make (R : Reactor.S) = struct
       in
       Effect.Deep.match_with (fun () -> behaviour cell) () handler
     in
-    let root : unit Core.cell = fresh () in
+    let root : unit Core.cell = Actor.create () in
     enqueue (fun () -> run_behaviour (fun (_ : unit Core.self) -> main ()) root);
     let earliest () =
       match !timers with

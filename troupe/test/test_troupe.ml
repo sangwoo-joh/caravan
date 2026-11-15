@@ -134,7 +134,13 @@ let addresses_across_runs () =
     Alcotest.(check bool)
       "different runs have distinct addresses"
       false
-      (Troupe.Address.equal (Option.get !old) current))
+      (Troupe.Address.equal (Option.get !old) current);
+    Alcotest.(check bool)
+      "different runs have distinct actor ids"
+      false
+      (String.equal
+         (Format.asprintf "%a" Troupe.Address.pp (Option.get !old))
+         (Format.asprintf "%a" Troupe.Address.pp current)))
 ;;
 
 let stop_old_addresses run () =
