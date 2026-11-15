@@ -1,56 +1,29 @@
-(** Actors and the operations they perform.
+type 'msg t =
+  { id : int
+  ; identity : unit ref
+  ; mailbox : 'msg Mailbox.t
+  ; mutable waiting :
+      (('msg -> bool) * ('msg, unit) Stdlib.Effect.Deep.continuation) option
+  ; mutable alive : bool
+  }
 
-    Each actor runs as its own fiber, owns a private mailbox, and blocks in
-    {!receive} until a matching message arrives. Every operation here performs an
-    effect that {!Scheduler} interprets. *)
+type 'msg self = 'msg t
+type 'msg behaviour = 'msg self -> unit
+type packed = Packed : 'msg t -> packed
+
+type _ Stdlib.Effect.t +=
+  | Spawn : 'msg behaviour -> 'msg t Stdlib.Effect.t
+  | Send : 'msg t * 'msg -> unit Stdlib.Effect.t
+  | Receive : 'msg t * ('msg -> bool) -> 'msg Stdlib.Effect.t
+  | Await_readable : Unix.file_descr -> unit Stdlib.Effect.t
+  | Sleep : float -> unit Stdlib.Effect.t
+  | Stop : 'msg t -> unit Stdlib.Effect.t
+
+val create : unit -> 'msg t
 
 module Address : sig
-  (** A shareable, send-only handle to an actor accepting ['msg]. *)
-  type 'msg t
+  type nonrec 'msg t = 'msg t
 
   val equal : 'a t -> 'b t -> bool
   val pp : Format.formatter -> 'a t -> unit
 end
-
-(** An actor's receive capability, handed only to its behaviour. Anyone holding
-    an {!Address.t} can send to an actor; only the actor itself can read its
-    mailbox. *)
-type 'msg self
-
-(** The code an actor runs. It typically loops, pulling messages with
-    {!receive}. *)
-type 'msg behaviour = 'msg self -> unit
-
-val create : unit -> 'msg Core.cell
-
-(** [spawn behaviour] spawns a new actor running [behaviour] and returns its
-    address. *)
-val spawn : 'msg behaviour -> 'msg Address.t
-
-(** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
-    stopped or finished actor are discarded. *)
-val send : 'msg Address.t -> 'msg -> unit
-
-(** [receive self ()] returns the oldest message in the mailbox, blocking the
-    actor until one arrives. [receive self ~matching ()] instead returns the
-    oldest message satisfying [matching], leaving the rest queued in order.
-    Exceptions raised by [matching] are raised by [receive] without removing
-    messages from the mailbox.
-
-    @raise Invalid_argument if [self] belongs to another actor. *)
-val receive : 'msg self -> ?matching:('msg -> bool) -> unit -> 'msg
-
-(** [address self] is the actor's own address. *)
-val address : 'msg self -> 'msg Address.t
-
-(** [await_readable fd] blocks the actor until [fd] is readable. *)
-val await_readable : Unix.file_descr -> unit
-
-(** [sleep seconds] blocks the actor for at least [seconds]. *)
-val sleep : float -> unit
-
-(** [stop addr] cancels the actor at [addr]: it never runs again, and any
-    descriptor or timer it was blocked on is released so the scheduler can go
-    idle. Messages already queued for it are discarded. Stopping a finished actor
-    is a no-op; stopping yourself takes effect at your next suspension. *)
-val stop : 'msg Address.t -> unit

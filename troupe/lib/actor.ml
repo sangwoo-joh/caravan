@@ -1,10 +1,28 @@
-type 'msg self = 'msg Core.self
-type 'msg behaviour = 'msg Core.behaviour
+type 'msg t =
+  { id : int
+  ; identity : unit ref
+  ; mailbox : 'msg Mailbox.t
+  ; mutable waiting :
+      (('msg -> bool) * ('msg, unit) Stdlib.Effect.Deep.continuation) option
+  ; mutable alive : bool
+  }
+
+type 'msg self = 'msg t
+type 'msg behaviour = 'msg self -> unit
+type packed = Packed : 'msg t -> packed
+
+type _ Stdlib.Effect.t +=
+  | Spawn : 'msg behaviour -> 'msg t Stdlib.Effect.t
+  | Send : 'msg t * 'msg -> unit Stdlib.Effect.t
+  | Receive : 'msg t * ('msg -> bool) -> 'msg Stdlib.Effect.t
+  | Await_readable : Unix.file_descr -> unit Stdlib.Effect.t
+  | Sleep : float -> unit Stdlib.Effect.t
+  | Stop : 'msg t -> unit Stdlib.Effect.t
 
 let next_id = Atomic.make 0
 
 let create () =
-  { Core.id = Atomic.fetch_and_add next_id 1 + 1
+  { id = Atomic.fetch_and_add next_id 1 + 1
   ; identity = ref ()
   ; mailbox = Mailbox.create ()
   ; waiting = None
@@ -13,20 +31,8 @@ let create () =
 ;;
 
 module Address = struct
-  type 'msg t = 'msg Core.cell
+  type nonrec 'msg t = 'msg t
 
-  let equal a b = a.Core.identity == b.Core.identity
-  let pp fmt a = Format.fprintf fmt "<actor:%d>" a.Core.id
+  let equal a b = a.identity == b.identity
+  let pp fmt a = Format.fprintf fmt "<actor:%d>" a.id
 end
-
-let spawn behaviour = Effect.perform (Core.Spawn behaviour)
-let send addr msg = Effect.perform (Core.Send (addr, msg))
-
-let receive self ?(matching = fun _ -> true) () =
-  Effect.perform (Core.Receive (self, matching))
-;;
-
-let address self = self
-let await_readable fd = Effect.perform (Core.Await_readable fd)
-let sleep seconds = Effect.perform (Core.Sleep seconds)
-let stop addr = Effect.perform (Core.Stop addr)

@@ -4,8 +4,8 @@
     and blocks in {!receive} until a matching message arrives. The scheduler in
     {!run} interprets the effects performed by [spawn], [send], and [receive].
 
-    This module re-exports {!Actor} (the actor-facing API), {!Reactor} (I/O
-    backends), and {!Scheduler} (the effect handler), plus a default {!run}. *)
+    The API provides actor operations, {!Reactor} I/O backends,
+    {!Scheduler} execution, and a default {!run}. *)
 
 module Address : sig
   (** A shareable, send-only handle to an actor accepting ['msg]. *)
