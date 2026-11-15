@@ -15,17 +15,18 @@ module Address : sig
   val pp : Format.formatter -> 'a t -> unit
 end
 
-(** An actor's receive capability, handed only to its body. Anyone holding an
-    {!Address.t} can send to an actor; only the actor itself can read its
+(** An actor's receive capability, handed only to its behaviour. Anyone holding
+    an {!Address.t} can send to an actor; only the actor itself can read its
     mailbox. *)
 type 'msg self
 
 (** The code an actor runs. It typically loops, pulling messages with
     {!receive}. *)
-type 'msg body = 'msg self -> unit
+type 'msg behaviour = 'msg self -> unit
 
-(** [cast body] spawns a new actor running [body] and returns its address. *)
-val cast : 'msg body -> 'msg Address.t
+(** [cast behaviour] spawns a new actor running [behaviour] and returns its
+    address. *)
+val cast : 'msg behaviour -> 'msg Address.t
 
 (** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
     stopped or finished actor are discarded. *)

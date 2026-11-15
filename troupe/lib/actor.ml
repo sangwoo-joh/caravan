@@ -1,5 +1,5 @@
 type 'msg self = 'msg Core.self
-type 'msg body = 'msg self -> unit
+type 'msg behaviour = 'msg Core.behaviour
 
 module Address = struct
   type 'msg t = 'msg Core.cell
@@ -8,7 +8,7 @@ module Address = struct
   let pp fmt a = Format.fprintf fmt "<actor:%d>" a.Core.id
 end
 
-let cast body = Effect.perform (Core.Cast body)
+let cast behaviour = Effect.perform (Core.Cast behaviour)
 let send addr msg = Effect.perform (Core.Send (addr, msg))
 
 let receive self ?(matching = fun _ -> true) () =

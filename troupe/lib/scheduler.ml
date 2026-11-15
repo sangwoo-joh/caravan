@@ -84,8 +84,8 @@ module Make (R : Reactor.S) = struct
            (fun (_, Packed c, _) -> c.Core.identity != cell.Core.identity)
            !timers
     in
-    let rec run_body : type a. a Core.body -> a Core.cell -> unit =
-      fun body cell ->
+    let rec run_behaviour : type a. a Core.behaviour -> a Core.cell -> unit =
+      fun behaviour cell ->
       let handler =
         { Effect.Deep.retc = (fun () -> finish cell)
         ; exnc =
@@ -95,11 +95,12 @@ module Make (R : Reactor.S) = struct
         ; effc =
             (fun (type b) (eff : b Effect.t) ->
               match eff with
-              | Core.Cast body ->
+              | Core.Cast behaviour ->
                 Some
                   (fun (k : (b, unit) Effect.Deep.continuation) ->
                     let c = fresh () in
-                    enqueue (fun () -> if c.Core.alive then run_body body c);
+                    enqueue (fun () ->
+                      if c.Core.alive then run_behaviour behaviour c);
                     Effect.Deep.continue k c)
               | Core.Send (target, msg) ->
                 Some
@@ -144,10 +145,10 @@ module Make (R : Reactor.S) = struct
               | _ -> None)
         }
       in
-      Effect.Deep.match_with (fun () -> body cell) () handler
+      Effect.Deep.match_with (fun () -> behaviour cell) () handler
     in
     let root : unit Core.cell = fresh () in
-    enqueue (fun () -> run_body (fun (_ : unit Core.self) -> main ()) root);
+    enqueue (fun () -> run_behaviour (fun (_ : unit Core.self) -> main ()) root);
     let earliest () =
       match !timers with
       | [] -> None
