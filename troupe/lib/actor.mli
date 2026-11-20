@@ -1,6 +1,5 @@
 type 'msg t =
   { id : int
-  ; identity : unit ref
   ; mailbox : 'msg Mailbox.t
   ; mutable waiting :
       (('msg -> bool) * ('msg, unit) Stdlib.Effect.Deep.continuation) option

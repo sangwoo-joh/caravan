@@ -1,6 +1,5 @@
 type 'msg t =
   { id : int
-  ; identity : unit ref
   ; mailbox : 'msg Mailbox.t
   ; mutable waiting :
       (('msg -> bool) * ('msg, unit) Stdlib.Effect.Deep.continuation) option
@@ -23,7 +22,6 @@ let next_id = Atomic.make 0
 
 let create () =
   { id = Atomic.fetch_and_add next_id 1 + 1
-  ; identity = ref ()
   ; mailbox = Mailbox.create ()
   ; waiting = None
   ; alive = true
@@ -33,6 +31,6 @@ let create () =
 module Address = struct
   type nonrec 'msg t = 'msg t
 
-  let equal a b = a.identity == b.identity
+  let equal a b = a.id = b.id
   let pp fmt a = Format.fprintf fmt "<actor:%d>" a.id
 end
