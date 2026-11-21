@@ -7,8 +7,8 @@ module type S = sig
   type t
 
   val create : unit -> t
-  val add_reader : t -> Unix.file_descr -> unit
-  val remove_reader : t -> Unix.file_descr -> unit
+  val watch_readable_fd : t -> Unix.file_descr -> unit
+  val unwatch_readable_fd : t -> Unix.file_descr -> unit
 
   (** [wait t ~timeout f] blocks until a registered descriptor is readable or
       [timeout] seconds elapse ([None] blocks indefinitely), then calls [f] once

@@ -144,7 +144,7 @@ graph LR
 
     behaviour -- "perform Spawn / Send / Receive / Await_readable / Sleep / Stop" --> handler
     handler -- "push / take" --> mb
-    handler -- "add_reader / remove_reader / wait" --> io_readiness
+    handler -- "watch_readable_fd / unwatch_readable_fd / wait" --> io_readiness
     handler -- "record deadline" --> timers
     handler -- "enqueue continuation" --> rq
     rq -- "run thunk = continue k" --> behaviour
@@ -285,7 +285,7 @@ I/O 준비 상태(readiness)의 기본값은 표준 라이브러리 **`Unix.sele
 
 ### fd 준비 상태는 리액터가, 타이머는 스케줄러가 소유한다
 
-`Io_Readiness.S`는 `add_reader` / `remove_reader` / `wait ~timeout`으로 좁게
+`Io_Readiness.S`는 `watch_readable_fd` / `unwatch_readable_fd` / `wait ~timeout`으로 좁게
 유지됩니다. 타이머 힙은 스케줄러에 있으며, 스케줄러는 계산된 타임아웃을 `wait`에
 그저 넘겨줄 뿐입니다. 이렇게 하면 백엔드 시그니처가 작게 유지되어, 향후 백엔드가
 구현해야 할 것이 아주 적어집니다.
@@ -303,7 +303,7 @@ continuation을 밖에서 되살릴 수 없으므로, 취소는 **continuation�
   타이머 항목은 소유 셀을 타입 소거(`Packed`)해 함께 들고 있습니다.
 - `stop`은 `alive <- false` 후, 그 셀의 `receive` continuation(있으면)을 비우고,
   **타이머 큐에서 그 셀의 항목을 제거**하며, `fd_waiters`를 훑어 그 셀이 기다리던 fd를
-  찾아 `remove_reader`합니다. 덕분에 취소된 타이머·fd 대기가 스케줄러의 유휴 판정을 막지
+  찾아 `unwatch_readable_fd`합니다. 덕분에 취소된 타이머·fd 대기가 스케줄러의 유휴 판정을 막지
   않아, `run`이 정상적으로 끝납니다.
 
 이것이 상위 TEA 계층의 **동적 구독**을 떠받칩니다: 모델이 바뀌어 어떤 구독이 사라지면,

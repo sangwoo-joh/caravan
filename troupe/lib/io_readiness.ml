@@ -2,8 +2,8 @@ module type S = sig
   type t
 
   val create : unit -> t
-  val add_reader : t -> Unix.file_descr -> unit
-  val remove_reader : t -> Unix.file_descr -> unit
+  val watch_readable_fd : t -> Unix.file_descr -> unit
+  val unwatch_readable_fd : t -> Unix.file_descr -> unit
   val wait : t -> timeout:float option -> (Unix.file_descr -> unit) -> unit
 end
 
@@ -12,11 +12,11 @@ module Select : S = struct
 
   let create () = { readers = [] }
 
-  let add_reader t fd =
+  let watch_readable_fd t fd =
     if not (List.mem fd t.readers) then t.readers <- fd :: t.readers
   ;;
 
-  let remove_reader t fd = t.readers <- List.filter (fun x -> x <> fd) t.readers
+  let unwatch_readable_fd t fd = t.readers <- List.filter (fun x -> x <> fd) t.readers
 
   let wait t ~timeout f =
     let tmo =
@@ -33,7 +33,7 @@ module Poll : S = struct
   module P = Iomux.Poll
 
   (* Active readers occupy slots [0 .. count - 1] contiguously; [index] maps a
-     descriptor to its slot so [remove_reader] can compact by moving the last
+     descriptor to its slot so [unwatch_readable_fd] can compact by moving the last
      slot into the freed one. *)
   type t =
     { poll : P.t
@@ -43,7 +43,7 @@ module Poll : S = struct
 
   let create () = { poll = P.create (); index = Hashtbl.create 8; count = 0 }
 
-  let add_reader t fd =
+  let watch_readable_fd t fd =
     if not (Hashtbl.mem t.index fd)
     then (
       P.set_index t.poll t.count fd P.Flags.pollin;
@@ -51,7 +51,7 @@ module Poll : S = struct
       t.count <- t.count + 1)
   ;;
 
-  let remove_reader t fd =
+  let unwatch_readable_fd t fd =
     match Hashtbl.find_opt t.index fd with
     | None -> ()
     | Some i ->

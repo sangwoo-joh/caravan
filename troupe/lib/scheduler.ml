@@ -37,7 +37,7 @@ module Make (R : Io_readiness.S) = struct
     (match waited_fd with
      | Some fd ->
        Hashtbl.remove state.fd_waiters fd;
-       R.remove_reader state.io_readiness fd
+       R.unwatch_readable_fd state.io_readiness fd
      | None -> ());
     state.timers
     <- List.filter
@@ -47,7 +47,7 @@ module Make (R : Io_readiness.S) = struct
 
   let await_readable state owner fd k =
     Hashtbl.replace state.fd_waiters fd (owner, k);
-    R.add_reader state.io_readiness fd
+    R.watch_readable_fd state.io_readiness fd
   ;;
 
   let sleep state owner seconds k =
@@ -169,7 +169,7 @@ module Make (R : Io_readiness.S) = struct
       | None -> ()
       | Some (owner, k) ->
         Hashtbl.remove state.fd_waiters fd;
-        R.remove_reader state.io_readiness fd;
+        R.unwatch_readable_fd state.io_readiness fd;
         resume state owner k ())
   ;;
 

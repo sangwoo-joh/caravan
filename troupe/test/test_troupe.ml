@@ -267,8 +267,8 @@ let self_stop wait () =
       type t = unit
 
       let create () = ()
-      let add_reader () _ = Alcotest.fail "stopped actor registered a reader"
-      let remove_reader () _ = ()
+      let watch_readable_fd () _ = Alcotest.fail "stopped actor registered a reader"
+      let unwatch_readable_fd () _ = ()
 
       let wait () ~timeout:_ _ =
         Alcotest.fail "stopped actor kept scheduler waiting"
@@ -388,7 +388,7 @@ let large_poll_timeout () =
         Unix.close r)
       (fun () ->
          let io_readiness = Troupe.Io_Readiness.Poll.create () in
-         Troupe.Io_Readiness.Poll.add_reader io_readiness r;
+         Troupe.Io_Readiness.Poll.watch_readable_fd io_readiness r;
          let ready = ref false in
          Troupe.Io_Readiness.Poll.wait io_readiness ~timeout:(Some 4294967.296) (fun fd ->
            ready := fd = r);
