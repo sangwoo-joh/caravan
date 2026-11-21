@@ -2,7 +2,7 @@
 
 ## 1. 히스토리: ACE와 POSA
 
-`lib/reactor.mli`의 이름은 우리가 지어낸 것이 아니라 물려받은 것입니다. 출처는
+`lib/io_readiness.mli`의 설계는 Reactor 패턴에서 유래했습니다. 출처는
 **ACE**(ADAPTIVE Communication Environment) — Douglas C. Schmidt가 1990년대 초
 Washington University in St. Louis에서 시작한 C++ 네트워크 프로그래밍
 프레임워크입니다.
@@ -37,7 +37,7 @@ ACE 자체의 가장 유명한 파생물은 **TAO**(ACE 위에 얹은 실시간 
 표준 라이브러리가 스레드·뮤텍스·시간을 흡수했으며, 비동기 I/O는 Boost.Asio가 사실상
 표준 자리를 가져갔기 때문입니다. 그래서 **오늘날 ACE의 가치는 코드보다 어휘**에
 가깝습니다. libuv·Netty·Asio·Eio를 읽을 때 쓰는 용어가 대체로 이 계보이고,
-`Reactor`라는 이름도 그 어휘를 빌려온 것입니다.
+이 모듈의 이전 이름인 `Reactor`도 그 어휘를 빌려온 것입니다.
 
 ---
 
@@ -68,13 +68,13 @@ ACE 자체의 가장 유명한 파생물은 **TAO**(ACE 위에 얹은 실시간 
 (Hollywood principle — "우리가 부를 테니 먼저 전화하지 마세요"). 애플리케이션 코드는
 요구하는 쪽이 아니라 도착한 이벤트에 *반응*하는 위치에 놓입니다.
 
-**Troupe에서.** `lib/reactor.mli`는 정통 Reactor의 축약형입니다. 정통 Reactor는
+**Troupe에서.** `lib/io_readiness.mli`는 정통 Reactor의 축약형입니다. 정통 Reactor는
 리액터가 `handle → handler` 레지스트리와 `handle_events()` 루프를 직접 소유하지만,
-우리 `Reactor.S`는 레지스트리를 갖지 않고 디스패치할 콜백을 `wait`의 인자로 받습니다.
+우리 `Io_Readiness.S`는 레지스트리를 갖지 않고 디스패치할 콜백을 `wait`의 인자로 받습니다.
 루프와 "누구를 깨울지"에 대한 지식은 `Scheduler`에 있습니다. 즉 **demultiplexing만
 떼어내 교체 가능한 백엔드로 만든 형태**이고, dispatcher 역할은 스케줄러가 겸합니다.
 `ACE_Reactor`가 `ACE_Select_Reactor` / `ACE_Dev_Poll_Reactor` / `ACE_WFMO_Reactor`를
-가졌던 것과 `Reactor.S` 뒤의 `Select` / `Poll`은 같은 발상입니다.
+가졌던 것과 `Io_Readiness.S` 뒤의 `Select` / `Poll`은 같은 발상입니다.
 
 ---
 
@@ -199,7 +199,7 @@ Erlang이 실용화했습니다. Active Object는 같은 아이디어에 OO/C++ 
 |---|---|
 | 동기 서비스 층 | 액터 본문. `receive` / `await_readable` / `sleep`을 그냥 호출합니다 |
 | 큐잉 층 | 효과 핸들러 경계 (+ 메일박스) |
-| 비동기 서비스 층 | `Scheduler` + `Reactor` |
+| 비동기 서비스 층 | `Scheduler` + `Io_Readiness` |
 
 원조는 두 층을 잇기 위해 **스레드와 큐**를 씁니다. Troupe는 **효과**를 씁니다. 액터는
 블록하는 것처럼 보이는 코드를 쓰지만 실제로는 `Effect.perform`이 연속을 잘라내고,
@@ -216,7 +216,7 @@ OCaml 5의 효과가 큐 없이 내줍니다.
 
 | 패턴 | Troupe에서의 위치 | 원조와의 차이 |
 |---|---|---|
-| Reactor | `Reactor.S`, `Select` / `Poll` | 레지스트리·루프 없이 demultiplexing만. 디스패치는 스케줄러 |
+| Reactor | `Io_Readiness.S`, `Select` / `Poll` | 레지스트리·루프 없이 demultiplexing만. 디스패치는 스케줄러 |
 | Proactor | 채택하지 않음 | io_uring 배제와 같은 이유 |
 | Acceptor-Connector | 해당 없음 | 네트워크 라이브러리가 아님 |
 | Active Object | 액터 + `Mailbox` + `Scheduler` | 스레드 대신 파이버, method request 없음, 선택적 수신 추가 |

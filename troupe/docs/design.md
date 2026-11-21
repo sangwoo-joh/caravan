@@ -33,12 +33,12 @@ Troupe는 대수적 효과(algebraic effects) 위에 구축한 OCaml 5용 소형
 
 **계층적 설계: 소스는 중단하고, 하나의 핸들러가 해석한다.**
 OCaml 5 효과 설계 지침에서 빌려 온 원칙입니다. 가장자리의 코드(예:
-`await_readable`을 수행하는 액터)는 중단하고, 스케줄러는 어떻게 기다릴지(`Reactor`를
+`await_readable`을 수행하는 액터)는 중단하고, 스케줄러는 어떻게 기다릴지(`Io_Readiness`를
 통해) 결정하며, 그 사이의 어떤 것도 블로킹에 대해 알 필요가 없습니다. 어떤 리액터
 백엔드가 설치되어 있든 동일한 액터가 그대로 실행됩니다.
 
 **교체 가능한 런타임.**
-스케줄러는 `Reactor.S` 백엔드에 대한 펑터(functor)입니다. 액터를 향한 API는
+스케줄러는 `Io_Readiness.S` 백엔드에 대한 펑터(functor)입니다. 액터를 향한 API는
 백엔드에 완전히 무관하며, 오직 스케줄러의 핸들러만 리액터를 참조합니다.
 
 ---
@@ -50,26 +50,26 @@ lib/
 ├── mailbox.mli/.ml   # FIFO queue with selective removal
 ├── core.ml           # shared cell type + private effects (internal, no .mli)
 ├── actor.mli/.ml     # Actor.t, behaviour, and the verbs (spawn/send/receive/…)
-├── reactor.mli/.ml   # module type S + Reactor.Select (Unix.select) / Reactor.Poll (iomux)
-├── scheduler.mli/.ml # Scheduler.Make (R : Reactor.S) — the effect handler
-└── troupe.mli/.ml    # re-exports Actor, Reactor, Scheduler + a default run
+├── io_readiness.mli/.ml   # module type S + Io_Readiness.Select (Unix.select) / Io_Readiness.Poll (iomux)
+├── scheduler.mli/.ml # Scheduler.Make (R : Io_Readiness.S) — the effect handler
+└── troupe.mli/.ml    # re-exports Actor, Io_Readiness, Scheduler + a default run
 ```
 
 모듈 의존 관계(`Core`는 `.mli`가 없는 공유 기반이고, `Select` / `Poll`은 두
-`Reactor.S` 백엔드입니다):
+`Io_Readiness.S` 백엔드입니다):
 
 ```mermaid
 graph TD
     Troupe --> Actor
     Troupe --> Scheduler
-    Troupe --> Reactor
+    Troupe --> Io_Readiness
     Actor --> Core
     Scheduler --> Core
     Scheduler --> Mailbox
-    Scheduler --> Reactor
+    Scheduler --> Io_Readiness
     Core --> Mailbox
-    Reactor --- Select
-    Reactor --- Poll
+    Io_Readiness --- Select
+    Io_Readiness --- Poll
 ```
 
 액터와 스케줄러가 모두 의존하는 요소 — `cell` 타입과 효과 생성자 — 는 `.mli`가
@@ -77,8 +77,8 @@ graph TD
 수행하는 쪽)와 `Scheduler`(효과를 매칭하는 쪽)에게는 보이면서도, `Core` 자체는
 결코 재노출(re-export)되지 않아 효과 생성자가 공개 API 밖에 머무릅니다. `Actor`와
 `Scheduler`는 `Core` 위에 지은 두 개의 명명된 얼굴이고, `Troupe`는 이 둘(그리고
-`Reactor`)을 재노출하며 기본 `run`을 제공하는 얇은 모듈입니다. `Mailbox`와
-`Reactor`는 독립적으로 남습니다. 각각 자료 구조와 교체 가능한 백엔드로서, 저마다의
+`Io_Readiness`)을 재노출하며 기본 `run`을 제공하는 얇은 모듈입니다. `Mailbox`와
+`Io_Readiness`는 독립적으로 남습니다. 각각 자료 구조와 교체 가능한 백엔드로서, 저마다의
 `.mli`를 가집니다.
 
 ### 공개 표면(public surface)
@@ -100,15 +100,15 @@ val await_readable : Unix.file_descr -> unit
 val sleep          : float -> unit
 val stop           : 'msg Actor.t -> unit
 
-module Reactor : ...                            (* re-exported: S, Select, Poll *)
+module Io_Readiness : ...                            (* re-exported: S, Select, Poll *)
 module Scheduler : sig
-  module Make (_ : Reactor.S) : sig val run : (unit -> unit) -> unit end
+  module Make (_ : Io_Readiness.S) : sig val run : (unit -> unit) -> unit end
 end
-val run : (unit -> unit) -> unit                (* = Make (Reactor.Select).run *)
+val run : (unit -> unit) -> unit                (* = Make (Io_Readiness.Select).run *)
 ```
 
-`Reactor`는 `Troupe`에서 재노출되므로, 외부 코드가 백엔드를 지정해 펑터를 적용할 수
-있습니다. 예: `Troupe.Scheduler.Make (Troupe.Reactor.Poll)`.
+`Io_Readiness`는 `Troupe`에서 재노출되므로, 외부 코드가 백엔드를 지정해 펑터를 적용할 수
+있습니다. 예: `Troupe.Scheduler.Make (Troupe.Io_Readiness.Poll)`.
 
 ### 효과(`Troupe` 내부용)
 
@@ -139,16 +139,16 @@ graph LR
     handler["Scheduler.effc (effect handler)"]
     mb[("mailbox + waiting slot")]
     rq[("run queue")]
-    reactor["Reactor backend"]
+    io_readiness["Io_Readiness backend"]
     timers[("timers list")]
 
     behaviour -- "perform Spawn / Send / Receive / Await_readable / Sleep / Stop" --> handler
     handler -- "push / take" --> mb
-    handler -- "add_reader / remove_reader / wait" --> reactor
+    handler -- "add_reader / remove_reader / wait" --> io_readiness
     handler -- "record deadline" --> timers
     handler -- "enqueue continuation" --> rq
     rq -- "run thunk = continue k" --> behaviour
-    reactor -- "fd ready → wake" --> handler
+    io_readiness -- "fd ready → wake" --> handler
     timers -- "expired → wake" --> handler
 ```
 
@@ -166,7 +166,7 @@ graph LR
 loop:
   run queue nonempty      -> pop and run the next thunk
   else fd/timer waiters?  -> timeout = earliest timer deadline (or None)
-                             R.wait reactor ~timeout (wake ready fds)
+                             R.wait io_readiness ~timeout (wake ready fds)
                              fire expired timers
   else                    -> quiescent: return
 ```
@@ -257,14 +257,14 @@ sequenceDiagram
 `Core`**를 사용했습니다. `Core`는 인터페이스가 없으므로 형제 모듈에게는 보이지만
 `Troupe`에서 재노출되지 않아, 어떤 강제 변환 곡예도 없이 효과가 비공개로 유지됩니다.
 `Actor`는 액터를 향한 API를, `Scheduler`는 핸들러를 노출하고, `Troupe`는 변하지 않는
-공개 표면 뒤에서 둘 다 재노출합니다. `Mailbox`와 `Reactor`는 진정으로 독립적이므로
+공개 표면 뒤에서 둘 다 재노출합니다. `Mailbox`와 `Io_Readiness`는 진정으로 독립적이므로
 분리된 채로 둡니다.
 
-### 기본값으로서의 `Unix.select`, 그 곁의 `Reactor.Poll`
+### 기본값으로서의 `Unix.select`, 그 곁의 `Io_Readiness.Poll`
 
 I/O 준비 상태(readiness)의 기본값은 표준 라이브러리 **`Unix.select`**
-(`Reactor.Select`)이며, `Scheduler.Make`가 소비하는 `Reactor.S` 시그니처 뒤에
-있습니다. 두 번째 백엔드인 **`Reactor.Poll`** — `poll(2)` 위에(`iomux` 라이브러리를
+(`Io_Readiness.Select`)이며, `Scheduler.Make`가 소비하는 `Io_Readiness.S` 시그니처 뒤에
+있습니다. 두 번째 백엔드인 **`Io_Readiness.Poll`** — `poll(2)` 위에(`iomux` 라이브러리를
 통해) — 가 그 곁에 함께 제공됩니다. 근거:
 
 - **io_uring** (Eio의 `eio_linux` 백엔드)는 보안 이슈의 이력이 있고 일부 강화된
@@ -274,18 +274,18 @@ I/O 준비 상태(readiness)의 기본값은 표준 라이브러리 **`Unix.sele
   실행조차 할 수 없습니다.
 - **`iomux`**는 현재 `poll(2)`/`ppoll(2)`만 구현합니다(epoll/kqueue는 명시된
   목표일 뿐 아직 미구현). `poll(2)` 자체가 이식성이 있고(Linux/macOS/BSD) `select`의
-  디스크립터 개수 제한이 없으므로, `Reactor.Poll`은 `Select`가 도는 모든 곳에서
+  디스크립터 개수 제한이 없으므로, `Io_Readiness.Poll`은 `Select`가 도는 모든 곳에서
   동작합니다.
 - TUI 규모 — 디스크립터 한두 개(stdin, 어쩌면 시그널 파이프) — 에서는 `select`가
   무엇 못지않게 빠르고 의존성도 없으므로, 기본값으로 남습니다.
 
-펑터 덕분에 이 작업이 저렴했습니다. `Reactor.Poll`은 스케줄러나 어떤 액터도 바꾸지
-않고 `Reactor.S` 뒤에 그대로 끼워 넣어졌으며, 동일한 테스트가 둘 다에 대해
+펑터 덕분에 이 작업이 저렴했습니다. `Io_Readiness.Poll`은 스케줄러나 어떤 액터도 바꾸지
+않고 `Io_Readiness.S` 뒤에 그대로 끼워 넣어졌으며, 동일한 테스트가 둘 다에 대해
 실행됩니다. 향후 `epoll`/`kqueue` 백엔드도 같은 방식으로 도착할 것입니다.
 
 ### fd 준비 상태는 리액터가, 타이머는 스케줄러가 소유한다
 
-`Reactor.S`는 `add_reader` / `remove_reader` / `wait ~timeout`으로 좁게
+`Io_Readiness.S`는 `add_reader` / `remove_reader` / `wait ~timeout`으로 좁게
 유지됩니다. 타이머 힙은 스케줄러에 있으며, 스케줄러는 계산된 타임아웃을 `wait`에
 그저 넘겨줄 뿐입니다. 이렇게 하면 백엔드 시그니처가 작게 유지되어, 향후 백엔드가
 구현해야 할 것이 아주 적어집니다.
@@ -335,9 +335,9 @@ TUI 계층이 그다음 그런 단계입니다.
 - **아직 감독/재시작 전략 없음.** 액터에서 잡히지 않은 예외는 핸들러의 `exnc`를
   통해 스케줄러 밖으로 전파됩니다.
 - **`select`의 `FD_SETSIZE` 제한**(~1024)은 기본 백엔드에 적용되지만, 우리가
-  겨냥하는 디스크립터 개수에서는 무관합니다. `Reactor.Poll`에는 그런 제한이 없습니다.
-- **타이머 해상도는 백엔드마다 다름.** `Reactor.Select`는 부동소수 초 단위
-  타임아웃을 받고, `Reactor.Poll`은 정수 밀리초(`poll(2)`)를 받으므로 거기서는
+  겨냥하는 디스크립터 개수에서는 무관합니다. `Io_Readiness.Poll`에는 그런 제한이 없습니다.
+- **타이머 해상도는 백엔드마다 다름.** `Io_Readiness.Select`는 부동소수 초 단위
+  타임아웃을 받고, `Io_Readiness.Poll`은 정수 밀리초(`poll(2)`)를 받으므로 거기서는
   `sleep`이 다음 밀리초로 올림됩니다. 틱 구독에는 무관하며, 밀리초 미만 타이머는
   `ppoll`이 필요합니다(iomux가 macOS에서 이를 에뮬레이션합니다. Darwin에는 진짜
   `ppoll`이 없기 때문입니다).
@@ -351,8 +351,8 @@ TUI 계층이 그다음 그런 단계입니다.
 - FIFO와 선택적 제거를 갖춘 메일박스.
 - 액터당 파이버 스케줄러: `spawn`, `send`, 선택적 `receive`, 파킹/깨우기,
   정지 상태까지의 실행.
-- 두 백엔드를 갖춘 `Reactor.S` — `Reactor.Select`(기본)와 `Reactor.Poll`(iomux);
-  `Scheduler.Make` 펑터; 소비자가 백엔드를 고를 수 있도록 재노출된 `Reactor`;
+- 두 백엔드를 갖춘 `Io_Readiness.S` — `Io_Readiness.Select`(기본)와 `Io_Readiness.Poll`(iomux);
+  `Scheduler.Make` 펑터; 소비자가 백엔드를 고를 수 있도록 재노출된 `Io_Readiness`;
   Select 기반 기본값인 `run`.
 - I/O 대기: `await_readable`(리액터에 파킹되어 준비 시 깨어남)과 `sleep`(타이머가
   마감 순서대로 발화).
@@ -370,7 +370,7 @@ TUI 계층이 그다음 그런 단계입니다.
 
 - Troupe 위의 **TUI / TEA 계층**: `view`, 렌더 액터, 그리고 `await_readable`로
   stdin을 읽는 입력 소스 액터; `sleep`하고 틱을 방출하는 액터로서의 구독.
-- 디스크립터 개수가 정당화한다면, 기존 `Reactor.S` 뒤의 **추가 리액터
+- 디스크립터 개수가 정당화한다면, 기존 `Io_Readiness.S` 뒤의 **추가 리액터
   백엔드**(`epoll`/`kqueue`). (iomux를 통한 `poll`은 완료됨 — §5 참조.)
 - 소비자가 필요로 한다면 **쓰기 준비 상태**와 fd당 여러 대기자.
 - **감독(supervision)** — 실패하는 액터를 위한 재시작 전략.

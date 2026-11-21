@@ -66,14 +66,14 @@ let backends : (string * ((unit -> unit) -> unit)) list =
   [ "select", Troupe.run
   ; ( "poll"
     , fun main ->
-        let module S = Troupe.Scheduler.Make (Troupe.Reactor.Poll) in
+        let module S = Troupe.Scheduler.Make (Troupe.Io_Readiness.Poll) in
         S.run main )
   ]
 ;;
 
 let await_readable run () =
   (* The reader parks on an empty pipe; the writer, running later, makes it
-     readable and the scheduler wakes the reader out of the reactor. *)
+     readable and the scheduler wakes the reader when the descriptor is ready. *)
   let got = ref "" in
   let r, w = Unix.pipe () in
   run (fun () ->
@@ -387,10 +387,10 @@ let large_poll_timeout () =
         ignore (Unix.waitpid [] child);
         Unix.close r)
       (fun () ->
-         let reactor = Troupe.Reactor.Poll.create () in
-         Troupe.Reactor.Poll.add_reader reactor r;
+         let io_readiness = Troupe.Io_Readiness.Poll.create () in
+         Troupe.Io_Readiness.Poll.add_reader io_readiness r;
          let ready = ref false in
-         Troupe.Reactor.Poll.wait reactor ~timeout:(Some 4294967.296) (fun fd ->
+         Troupe.Io_Readiness.Poll.wait io_readiness ~timeout:(Some 4294967.296) (fun fd ->
            ready := fd = r);
          Alcotest.(check bool) "large timeout waits for readiness" true !ready)
 ;;
@@ -445,7 +445,7 @@ let () =
             (matching_exception true)
         ; Alcotest.test_case "only owner may receive" `Quick receive_owner
         ] )
-    ; ( "reactor"
+    ; ( "io_readiness"
       , List.concat_map
           (fun (name, run) ->
              [ Alcotest.test_case

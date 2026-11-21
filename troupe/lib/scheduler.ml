@@ -1,7 +1,7 @@
-module Make (R : Reactor.S) = struct
+module Make (R : Io_readiness.S) = struct
   type state =
     { run_queue : (unit -> unit) Queue.t
-    ; reactor : R.t
+    ; io_readiness : R.t
     ; fd_waiters :
         ( Unix.file_descr
           , Actor.packed * (unit, unit) Stdlib.Effect.Deep.continuation )
@@ -37,7 +37,7 @@ module Make (R : Reactor.S) = struct
     (match waited_fd with
      | Some fd ->
        Hashtbl.remove state.fd_waiters fd;
-       R.remove_reader state.reactor fd
+       R.remove_reader state.io_readiness fd
      | None -> ());
     state.timers
     <- List.filter
@@ -47,7 +47,7 @@ module Make (R : Reactor.S) = struct
 
   let await_readable state owner fd k =
     Hashtbl.replace state.fd_waiters fd (owner, k);
-    R.add_reader state.reactor fd
+    R.add_reader state.io_readiness fd
   ;;
 
   let sleep state owner seconds k =
@@ -164,12 +164,12 @@ module Make (R : Reactor.S) = struct
   ;;
 
   let wait state timeout =
-    R.wait state.reactor ~timeout (fun fd ->
+    R.wait state.io_readiness ~timeout (fun fd ->
       match Hashtbl.find_opt state.fd_waiters fd with
       | None -> ()
       | Some (owner, k) ->
         Hashtbl.remove state.fd_waiters fd;
-        R.remove_reader state.reactor fd;
+        R.remove_reader state.io_readiness fd;
         resume state owner k ())
   ;;
 
@@ -199,7 +199,7 @@ module Make (R : Reactor.S) = struct
   let run main =
     let state =
       { run_queue = Queue.create ()
-      ; reactor = R.create ()
+      ; io_readiness = R.create ()
       ; fd_waiters = Hashtbl.create 8
       ; timers = []
       }

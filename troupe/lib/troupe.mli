@@ -4,7 +4,7 @@
     and blocks in {!receive} until a matching message arrives. The scheduler in
     {!run} interprets the effects performed by [spawn], [send], and [receive].
 
-    The API provides actor operations, {!Reactor} I/O backends,
+    The API provides actor operations, {!Io_Readiness} I/O backends,
     {!Scheduler} execution, and a default {!run}. *)
 
 module Actor : sig
@@ -49,13 +49,13 @@ val sleep : float -> unit
 val stop : 'msg Actor.t -> unit
 
 (** I/O readiness backends. Pass one to {!Scheduler.Make}. *)
-module Reactor = Reactor
+module Io_Readiness = Io_readiness
 
-(** Build a scheduler over a chosen {!Reactor.S} backend. *)
+(** Build a scheduler over a chosen {!Io_Readiness.S} backend. *)
 module Scheduler = Scheduler
 
 (** [run main] runs [main] as the initial fiber under a fresh scheduler backed
-    by {!Reactor.Select}, and returns once every actor is idle — blocked with no
+    by {!Io_Readiness.Select}, and returns once every actor is idle — blocked with no
     matching message, and with no outstanding descriptor or timer waits. [main]
     may {!spawn} actors and {!send} to them. *)
 val run : (unit -> unit) -> unit

@@ -1,6 +1,6 @@
 (** I/O readiness backends for the scheduler.
 
-    A reactor watches file descriptors and reports when they become readable, so
+    The backend watches file descriptors and reports when they become readable, so
     the scheduler can block instead of busy-waiting while every actor is idle. *)
 
 module type S = sig

@@ -1,4 +1,4 @@
-module Reactor = Reactor
+module Io_Readiness = Io_readiness
 module Scheduler = Scheduler
 
 module Actor = Actor
@@ -17,6 +17,6 @@ let sleep seconds = Stdlib.Effect.perform (Actor.Sleep seconds)
 let stop addr = Stdlib.Effect.perform (Actor.Stop addr)
 
 let run main =
-  let module S = Scheduler.Make (Reactor.Select) in
+  let module S = Scheduler.Make (Io_Readiness.Select) in
   S.run main
 ;;
