@@ -8,7 +8,7 @@ type 'msg source =
   | Keys of (KeyEvent.key -> 'msg option)
   | Every of float * (unit -> 'msg)
   | Worker :
-      ('request Troupe.self -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
+      ('request Troupe.Actor.t -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
       -> 'msg source
 
 val none : 'msg t
@@ -23,7 +23,7 @@ val every : ?key:string -> float -> (unit -> 'msg) -> 'msg t
 
 (** [worker ~key ~cleanup run] is a subscription running [run self ~dispatch]
     in an actor. [dispatch] sends a message to the app. The actor can publish
-    [Troupe.address self] and receive requests sent with {!Cmd.send}.
+    [self] and receive requests sent with {!Cmd.send}.
 
     [key] must be unique among workers. Keeping the same key preserves the
     original [run] and [cleanup], even after [run] returns. Removing the key
@@ -43,7 +43,7 @@ val every : ?key:string -> float -> (unit -> 'msg) -> 'msg t
 val worker
   :  key:string
   -> cleanup:(unit -> unit)
-  -> ('request Troupe.self -> dispatch:('msg -> unit) -> unit)
+  -> ('request Troupe.Actor.t -> dispatch:('msg -> unit) -> unit)
   -> 'msg t
 
 (** [batch subs] combines the subscriptions in [subs]. Each key press is

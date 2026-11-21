@@ -151,7 +151,7 @@ Troupe와 가장 가까운 패턴입니다. 참여자는 여섯입니다.
 | Method Request | 메시지 |
 | Servant | 액터 본문 |
 | Scheduler | `Scheduler` |
-| Proxy | `Address` + `spawn` / `send` |
+| Proxy | `Actor.t` + `spawn` / `send` |
 
 차이도 분명합니다.
 

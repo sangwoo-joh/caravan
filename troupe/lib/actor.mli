@@ -6,8 +6,7 @@ type 'msg t =
   ; mutable alive : bool
   }
 
-type 'msg self = 'msg t
-type 'msg behaviour = 'msg self -> unit
+type 'msg behaviour = 'msg t -> unit
 type packed = Packed : 'msg t -> packed
 
 type _ Stdlib.Effect.t +=
@@ -20,9 +19,5 @@ type _ Stdlib.Effect.t +=
 
 val create : unit -> 'msg t
 
-module Address : sig
-  type nonrec 'msg t = 'msg t
-
-  val equal : 'a t -> 'b t -> bool
-  val pp : Format.formatter -> 'a t -> unit
-end
+val equal : 'a t -> 'b t -> bool
+val pp : Format.formatter -> 'a t -> unit

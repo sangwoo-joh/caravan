@@ -6,8 +6,7 @@ type 'msg t =
   ; mutable alive : bool
   }
 
-type 'msg self = 'msg t
-type 'msg behaviour = 'msg self -> unit
+type 'msg behaviour = 'msg t -> unit
 type packed = Packed : 'msg t -> packed
 
 type _ Stdlib.Effect.t +=
@@ -28,9 +27,5 @@ let create () =
   }
 ;;
 
-module Address = struct
-  type nonrec 'msg t = 'msg t
-
-  let equal a b = a.id = b.id
-  let pp fmt a = Format.fprintf fmt "<actor:%d>" a.id
-end
+let equal a b = a.id = b.id
+let pp fmt a = Format.fprintf fmt "<actor:%d>" a.id

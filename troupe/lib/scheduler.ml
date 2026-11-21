@@ -30,7 +30,7 @@ module Make (R : Reactor.S) = struct
     let waited_fd =
       Hashtbl.fold
         (fun fd (Actor.Packed c, _) acc ->
-           if Actor.Address.equal c cell then Some fd else acc)
+           if Actor.equal c cell then Some fd else acc)
         state.fd_waiters
         None
     in
@@ -41,7 +41,7 @@ module Make (R : Reactor.S) = struct
      | None -> ());
     state.timers
     <- List.filter
-         (fun (_, Actor.Packed c, _) -> not (Actor.Address.equal c cell))
+         (fun (_, Actor.Packed c, _) -> not (Actor.equal c cell))
          state.timers
   ;;
 
@@ -110,7 +110,7 @@ module Make (R : Reactor.S) = struct
           | Actor.Receive (self, filter) ->
             Some
               (fun k ->
-                if not (Actor.Address.equal self cell)
+                if not (Actor.equal self cell)
                 then
                   Stdlib.Effect.Deep.discontinue
                     k

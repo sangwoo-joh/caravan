@@ -3,7 +3,7 @@ type 'msg t =
   | Dispatch of 'msg
   | Quit
   | Batch of 'msg t list
-  | Send : 'request Troupe.Address.t * 'request -> 'msg t
+  | Send : 'request Troupe.Actor.t * 'request -> 'msg t
 
 let none = None
 let dispatch m = Dispatch m

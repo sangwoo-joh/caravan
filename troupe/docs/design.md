@@ -49,7 +49,7 @@ OCaml 5 효과 설계 지침에서 빌려 온 원칙입니다. 가장자리의 �
 lib/
 ├── mailbox.mli/.ml   # FIFO queue with selective removal
 ├── core.ml           # shared cell type + private effects (internal, no .mli)
-├── actor.mli/.ml     # self, behaviour, Address, and the verbs (spawn/send/receive/…)
+├── actor.mli/.ml     # Actor.t, behaviour, and the verbs (spawn/send/receive/…)
 ├── reactor.mli/.ml   # module type S + Reactor.Select (Unix.select) / Reactor.Poll (iomux)
 ├── scheduler.mli/.ml # Scheduler.Make (R : Reactor.S) — the effect handler
 └── troupe.mli/.ml    # re-exports Actor, Reactor, Scheduler + a default run
@@ -84,23 +84,21 @@ graph TD
 ### 공개 표면(public surface)
 
 ```ocaml
-module Address : sig
-  type 'msg t                                   (* shareable send handle *)
+module Actor : sig
+  type 'msg t                                   (* actor handle *)
   val equal : 'a t -> 'b t -> bool
   val pp    : Format.formatter -> 'a t -> unit
 end
 
-type 'msg self                                  (* receive capability *)
-type 'msg behaviour = 'msg self -> unit
+type 'msg behaviour = 'msg Actor.t -> unit
 
-val spawn   : 'msg behaviour -> 'msg Address.t
-val send    : 'msg Address.t -> 'msg -> unit
-val receive : 'msg self -> ?matching:('msg -> bool) -> unit -> 'msg
-val address : 'msg self -> 'msg Address.t
+val spawn   : 'msg behaviour -> 'msg Actor.t
+val send    : 'msg Actor.t -> 'msg -> unit
+val receive : 'msg Actor.t -> ?matching:('msg -> bool) -> unit -> 'msg
 
 val await_readable : Unix.file_descr -> unit
 val sleep          : float -> unit
-val stop           : 'msg Address.t -> unit
+val stop           : 'msg Actor.t -> unit
 
 module Reactor : ...                            (* re-exported: S, Select, Poll *)
 module Scheduler : sig
@@ -183,7 +181,7 @@ flowchart TD
     R --> F[fire expired timers] --> L
 ```
 
-`spawn`은 메일박스와 `Address`를 새로 만들고 자식의 파이버를 큐에 넣습니다. `send`는
+`spawn`은 메일박스와 액터를 새로 만들고 자식의 파이버를 큐에 넣습니다. `send`는
 대상 메일박스에 밀어 넣고, 대상이 조건에 맞는 필터로 파킹되어 있으면 그 재개를 큐에
 넣습니다. `receive`는 메일박스를 스캔하여, 적중 시 즉시 재개하고, 실패 시 파킹합니다.
 보낼 수 있는 발신자가 없는 메시지에 파킹된 액터는 그저 영원히 기다립니다 — 그래도
@@ -229,21 +227,15 @@ sequenceDiagram
 만들어 볼 만한 흥미로운 핵심이기 때문입니다. 리듀서 스타일은 여전히 *그 위에*
 표현할 수 있으므로(수신하고 접는 루프), 향후 TEA 계층을 위해 잃는 것은 없습니다.
 
-### `self` 대 `Address` — 능력(capability)의 분리
+### 메시지 송수신
 
-누구든 `Address`를 쥐고 액터에게 `send`할 수 있지만, 액터 자신만이 `self`를 받고,
-오직 `self`만이 `receive`할 수 있습니다. 둘은 같은 런타임 `cell`을 두 개의 추상
-타입으로 노출한 것이므로, 이 분리는 런타임 비용이 전혀 없으면서 "누구나 나에게
-보낼 수 있지만, 내 메일박스는 나만 읽을 수 있다"를 타입 수준의 보장으로 만듭니다.
-`address : 'msg self -> 'msg Address.t`가 그 일방향 문입니다.
+`send`와 `receive`는 모두 `Actor.t`를 받습니다. 다른 액터의 우편함에서 수신하려고 하면 스케줄러가 `Invalid_argument`를 발생시킵니다.
 
-### 명명: `Address`, `spawn`, `run`
+### 명명: `spawn`, `run`
 
 이 라이브러리는 연극 *troupe(극단)*를 테마로 하지만, 핵심 연산은 동작을
 쉽게 알아볼 수 있는 일반적인 용어를 사용합니다:
 
-- **`Address`** (`Pid`/`Ref` 대신) — 메시지를 보내는 곳이며, `Ref`는 OCaml의
-  `ref`와도 충돌합니다.
 - **`spawn`** — 새 액터를 생성하고 실행합니다.
 - **`run`** — 스케줄러 안에서 액터를 실행합니다. `Effect.perform`은 내부에서
   스케줄러에 효과 처리를 요청하는 OCaml 연산이며, Troupe의 공개 API가 아닙니다.
@@ -253,7 +245,7 @@ sequenceDiagram
 
 ### 모듈 배치: 내부 `Core`, 그다음 `Actor` / `Scheduler` / `Troupe`
 
-런타임은 `Address`, `self`, 스케줄러가 함께 쓰는 하나의 공유 `cell` 타입 위에
+런타임은 액터와 스케줄러가 함께 쓰는 하나의 공유 `cell` 타입 위에
 얹혀 있고, 스케줄러는 효과 생성자를 패턴 매칭해야 합니다. 순진한 분리 — 각자
 `.mli`를 가진 `actor.ml`과 `scheduler.ml` — 는 모듈 시스템과 부딪힙니다. 공유 `cell`은
 추상 타입 강제 변환이나 재귀 모듈을 필요로 하고, 효과 생성자는 두 파일이 모두 볼 수

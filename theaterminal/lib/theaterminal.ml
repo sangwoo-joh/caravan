@@ -14,7 +14,7 @@ type 'msg source =
   | Keys of (KeyEvent.key -> 'msg option) list
   | Every of float * (unit -> 'msg)
   | Worker :
-      ('request Troupe.self -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
+      ('request Troupe.Actor.t -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
       -> 'msg source
 
 let sources subscriptions =
@@ -118,8 +118,7 @@ let run_app ~render ~on_quit app =
     (fun () ->
        Troupe.run (fun () ->
          ignore
-           (Troupe.spawn (fun self ->
-              let runtime = Troupe.address self in
+           (Troupe.spawn (fun runtime ->
               let dispatch m = Troupe.send runtime m in
               let stop = ref false in
               let request_quit () = stop := true in
@@ -157,7 +156,7 @@ let run_app ~render ~on_quit app =
                   Hashtbl.clear registry;
                   on_quit ())
                 else (
-                  let msg = Troupe.receive self () in
+                  let msg = Troupe.receive runtime () in
                   let model', cmd = app.update msg !model in
                   model := model';
                   render (app.view model');

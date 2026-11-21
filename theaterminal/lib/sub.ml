@@ -2,7 +2,7 @@ type 'msg source =
   | Keys of (KeyEvent.key -> 'msg option)
   | Every of float * (unit -> 'msg)
   | Worker :
-      ('request Troupe.self -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
+      ('request Troupe.Actor.t -> dispatch:('msg -> unit) -> unit) * (unit -> unit)
       -> 'msg source
 
 type 'msg t =

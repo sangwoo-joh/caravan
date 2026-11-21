@@ -517,7 +517,7 @@ let worker_wait_cleanup () =
 ;;
 
 type engine_msg =
-  | Ready of string Troupe.Address.t
+  | Ready of string Troupe.Actor.t
   | Reply of string
   | Tick
 
@@ -560,7 +560,7 @@ let worker_process_roundtrip () =
                Unix.stderr)
       in
       process := Some (pid, input, output);
-      dispatch (Ready (Troupe.address self));
+      dispatch (Ready self);
       let buf = Bytes.create 1 in
       let rec loop () =
         let request = Troupe.receive self () ^ "\n" in

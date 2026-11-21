@@ -77,15 +77,15 @@ let await_readable run () =
   let got = ref "" in
   let r, w = Unix.pipe () in
   run (fun () ->
-    let _ : unit Troupe.Address.t =
-      Troupe.spawn (fun (_ : unit Troupe.self) ->
+    let _ : unit Troupe.Actor.t =
+      Troupe.spawn (fun (_ : unit Troupe.Actor.t) ->
         Troupe.await_readable r;
         let buf = Bytes.create 16 in
         let n = Unix.read r buf 0 16 in
         got := Bytes.sub_string buf 0 n)
     in
-    let _ : unit Troupe.Address.t =
-      Troupe.spawn (fun (_ : unit Troupe.self) ->
+    let _ : unit Troupe.Actor.t =
+      Troupe.spawn (fun (_ : unit Troupe.Actor.t) ->
         ignore (Unix.write_substring w "hi" 0 2))
     in
     ());
@@ -130,17 +130,17 @@ let addresses_across_runs () =
     Alcotest.(check bool)
       "address equals itself"
       true
-      (Troupe.Address.equal current current);
+      (Troupe.Actor.equal current current);
     Alcotest.(check bool)
       "different runs have distinct addresses"
       false
-      (Troupe.Address.equal (Option.get !old) current);
+      (Troupe.Actor.equal (Option.get !old) current);
     Alcotest.(check bool)
       "different runs have distinct actor ids"
       false
       (String.equal
-         (Format.asprintf "%a" Troupe.Address.pp (Option.get !old))
-         (Format.asprintf "%a" Troupe.Address.pp current)))
+         (Format.asprintf "%a" Troupe.Actor.pp (Option.get !old))
+         (Format.asprintf "%a" Troupe.Actor.pp current)))
 ;;
 
 let stop_old_addresses run () =
@@ -220,13 +220,13 @@ let waits_during_message_traffic run () =
 let timers_order run () =
   let log = ref [] in
   run (fun () ->
-    let _ : unit Troupe.Address.t =
-      Troupe.spawn (fun (_ : unit Troupe.self) ->
+    let _ : unit Troupe.Actor.t =
+      Troupe.spawn (fun (_ : unit Troupe.Actor.t) ->
         Troupe.sleep 0.03;
         log := "slow" :: !log)
     in
-    let _ : unit Troupe.Address.t =
-      Troupe.spawn (fun (_ : unit Troupe.self) ->
+    let _ : unit Troupe.Actor.t =
+      Troupe.spawn (fun (_ : unit Troupe.Actor.t) ->
         Troupe.sleep 0.005;
         log := "fast" :: !log)
     in
@@ -280,7 +280,7 @@ let self_stop wait () =
   S.run (fun () ->
     ignore
       (Troupe.spawn (fun self ->
-         Troupe.stop (Troupe.address self);
+         Troupe.stop self;
          reached_wait := true;
          wait ();
          resumed := true)));
@@ -360,7 +360,7 @@ let receive_owner () =
                   ()
               with
               | Invalid_argument _ -> rejected := true));
-         ignore (Troupe.spawn (fun _ -> Troupe.send (Troupe.address self) ()));
+         ignore (Troupe.spawn (fun _ -> Troupe.send self ()));
          Troupe.receive self ();
          owner_received := true)));
   Alcotest.(check bool) "foreign receive rejected in caller" true !rejected;

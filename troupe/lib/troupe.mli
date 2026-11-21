@@ -7,30 +7,25 @@
     The API provides actor operations, {!Reactor} I/O backends,
     {!Scheduler} execution, and a default {!run}. *)
 
-module Address : sig
-  (** A shareable, send-only handle to an actor accepting ['msg]. *)
+module Actor : sig
+  (** A handle to an actor accepting ['msg]. *)
   type 'msg t
 
   val equal : 'a t -> 'b t -> bool
   val pp : Format.formatter -> 'a t -> unit
 end
 
-(** An actor's receive capability, handed only to its behaviour. Anyone holding
-    an {!Address.t} can send to an actor; only the actor itself can read its
-    mailbox. *)
-type 'msg self
-
 (** The code an actor runs. It typically loops, pulling messages with
     {!receive}. *)
-type 'msg behaviour = 'msg self -> unit
+type 'msg behaviour = 'msg Actor.t -> unit
 
 (** [spawn behaviour] spawns a new actor running [behaviour] and returns its
     address. *)
-val spawn : 'msg behaviour -> 'msg Address.t
+val spawn : 'msg behaviour -> 'msg Actor.t
 
 (** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
     stopped or finished actor are discarded. *)
-val send : 'msg Address.t -> 'msg -> unit
+val send : 'msg Actor.t -> 'msg -> unit
 
 (** [receive self ()] returns the oldest message in the mailbox, blocking the
     actor until one arrives. [receive self ~matching ()] instead returns the
@@ -39,10 +34,7 @@ val send : 'msg Address.t -> 'msg -> unit
     messages from the mailbox.
 
     @raise Invalid_argument if [self] belongs to another actor. *)
-val receive : 'msg self -> ?matching:('msg -> bool) -> unit -> 'msg
-
-(** [address self] is the actor's own address. *)
-val address : 'msg self -> 'msg Address.t
+val receive : 'msg Actor.t -> ?matching:('msg -> bool) -> unit -> 'msg
 
 (** [await_readable fd] blocks the actor until [fd] is readable. *)
 val await_readable : Unix.file_descr -> unit
@@ -54,7 +46,7 @@ val sleep : float -> unit
     descriptor or timer it was blocked on is released. Messages already queued
     for it are discarded. Stopping a finished actor is a no-op. Stopping yourself
     takes effect at your next suspension. *)
-val stop : 'msg Address.t -> unit
+val stop : 'msg Actor.t -> unit
 
 (** I/O readiness backends. Pass one to {!Scheduler.Make}. *)
 module Reactor = Reactor
