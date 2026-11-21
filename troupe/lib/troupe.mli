@@ -17,11 +17,11 @@ end
 
 (** The code an actor runs. It typically loops, pulling messages with
     {!receive}. *)
-type 'msg behaviour = 'msg Actor.t -> unit
+type 'msg action = 'msg Actor.t -> unit
 
-(** [spawn behaviour] spawns a new actor running [behaviour] and returns its
+(** [spawn action] spawns a new actor running [action] and returns its
     address. *)
-val spawn : 'msg behaviour -> 'msg Actor.t
+val spawn : 'msg action -> 'msg Actor.t
 
 (** [send addr msg] delivers [msg] to the actor at [addr]. Messages sent to a
     stopped or finished actor are discarded. *)

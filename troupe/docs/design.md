@@ -49,7 +49,7 @@ OCaml 5 효과 설계 지침에서 빌려 온 원칙입니다. 가장자리의 �
 lib/
 ├── mailbox.mli/.ml   # FIFO queue with selective removal
 ├── core.ml           # shared cell type + private effects (internal, no .mli)
-├── actor.mli/.ml     # Actor.t, behaviour, and the verbs (spawn/send/receive/…)
+├── actor.mli/.ml     # Actor.t, action, and the verbs (spawn/send/receive/…)
 ├── io_readiness.mli/.ml   # module type S + Io_Readiness.Select (Unix.select) / Io_Readiness.Poll (iomux)
 ├── scheduler.mli/.ml # Scheduler.Make (R : Io_Readiness.S) — the effect handler
 └── troupe.mli/.ml    # re-exports Actor, Io_Readiness, Scheduler + a default run
@@ -90,9 +90,9 @@ module Actor : sig
   val pp    : Format.formatter -> 'a t -> unit
 end
 
-type 'msg behaviour = 'msg Actor.t -> unit
+type 'msg action = 'msg Actor.t -> unit
 
-val spawn   : 'msg behaviour -> 'msg Actor.t
+val spawn   : 'msg action -> 'msg Actor.t
 val send    : 'msg Actor.t -> 'msg -> unit
 val receive : 'msg Actor.t -> ?matching:('msg -> bool) -> unit -> 'msg
 
@@ -114,7 +114,7 @@ val run : (unit -> unit) -> unit                (* = Make (Io_Readiness.Select).
 
 ```ocaml
 type _ Effect.t +=
-  | Spawn          : 'msg behaviour -> 'msg cell Effect.t
+  | Spawn          : 'msg action -> 'msg cell Effect.t
   | Send           : 'msg cell * 'msg -> unit Effect.t
   | Receive        : 'msg cell * ('msg -> bool) -> 'msg Effect.t
   | Await_readable : Unix.file_descr -> unit Effect.t
@@ -135,19 +135,19 @@ type _ Effect.t +=
 
 ```mermaid
 graph LR
-    behaviour["actor behaviour (fiber)"]
+    action["actor action (fiber)"]
     handler["Scheduler.effc (effect handler)"]
     mb[("mailbox + waiting slot")]
     rq[("run queue")]
     io_readiness["Io_Readiness backend"]
     timers[("timers list")]
 
-    behaviour -- "perform Spawn / Send / Receive / Await_readable / Sleep / Stop" --> handler
+    action -- "perform Spawn / Send / Receive / Await_readable / Sleep / Stop" --> handler
     handler -- "push / take" --> mb
     handler -- "watch_readable_fd / unwatch_readable_fd / wait" --> io_readiness
     handler -- "record deadline" --> timers
     handler -- "enqueue continuation" --> rq
-    rq -- "run thunk = continue k" --> behaviour
+    rq -- "run thunk = continue k" --> action
     io_readiness -- "fd ready → wake" --> handler
     timers -- "expired → wake" --> handler
 ```

@@ -3,9 +3,9 @@ module Scheduler = Scheduler
 
 module Actor = Actor
 
-type 'msg behaviour = 'msg Actor.behaviour
+type 'msg action = 'msg Actor.action
 
-let spawn behaviour = Stdlib.Effect.perform (Actor.Spawn behaviour)
+let spawn action = Stdlib.Effect.perform (Actor.Spawn action)
 let send addr msg = Stdlib.Effect.perform (Actor.Send (addr, msg))
 
 let receive self ?(matching = fun _ -> true) () =

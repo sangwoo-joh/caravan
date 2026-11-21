@@ -93,14 +93,14 @@ module Make (R : Io_readiness.S) = struct
     ; effc =
         (fun (type b) (eff : b Stdlib.Effect.t) ->
           match eff with
-          | Actor.Spawn behaviour ->
+          | Actor.Spawn action ->
             Some
               (fun (k : (b, unit) Stdlib.Effect.Deep.continuation) ->
                 let c = Actor.create () in
                 enqueue state (fun () ->
                   if c.Actor.alive
                   then
-                    Stdlib.Effect.Deep.match_with behaviour c (handler state c));
+                    Stdlib.Effect.Deep.match_with action c (handler state c));
                 Stdlib.Effect.Deep.continue k c)
           | Actor.Send (target, msg) ->
             Some
@@ -143,8 +143,8 @@ module Make (R : Io_readiness.S) = struct
     }
   ;;
 
-  let run_behaviour state behaviour cell =
-    Stdlib.Effect.Deep.match_with behaviour cell (handler state cell)
+  let run_action state action cell =
+    Stdlib.Effect.Deep.match_with action cell (handler state cell)
   ;;
 
   let earliest state () =
@@ -205,7 +205,7 @@ module Make (R : Io_readiness.S) = struct
       }
     in
     let root : unit Actor.t = Actor.create () in
-    enqueue state (fun () -> run_behaviour state (fun _ -> main ()) root);
+    enqueue state (fun () -> run_action state (fun _ -> main ()) root);
     loop state ()
   ;;
 end
