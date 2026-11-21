@@ -26,11 +26,11 @@ module Make (R : Io_readiness.S) = struct
       if c.Actor.alive then Stdlib.Effect.Deep.continue k v)
   ;;
 
-  let cancel_waits state (Actor.Packed cell) =
+  let cancel_waits state (Actor.Packed actor) =
     let waited_fd =
       Hashtbl.fold
         (fun fd (Actor.Packed c, _) acc ->
-           if Actor.equal c cell then Some fd else acc)
+           if Actor.equal c actor then Some fd else acc)
         state.fd_waiters
         None
     in
@@ -41,7 +41,7 @@ module Make (R : Io_readiness.S) = struct
      | None -> ());
     state.timers
     <- List.filter
-         (fun (_, Actor.Packed c, _) -> not (Actor.equal c cell))
+         (fun (_, Actor.Packed c, _) -> not (Actor.equal c actor))
          state.timers
   ;;
 
@@ -55,40 +55,40 @@ module Make (R : Io_readiness.S) = struct
     state.timers <- (deadline, owner, k) :: state.timers
   ;;
 
-  let finish cell =
-    cell.Actor.alive <- false;
-    cell.Actor.waiting <- None;
-    Mailbox.clear cell.Actor.mailbox
+  let finish actor =
+    actor.Actor.alive <- false;
+    actor.Actor.waiting <- None;
+    Mailbox.clear actor.Actor.mailbox
   ;;
 
   let deliver : type a. state -> a Actor.t -> a -> unit =
-    fun state cell msg ->
-    if cell.Actor.alive
+    fun state actor msg ->
+    if actor.Actor.alive
     then (
-      Mailbox.push cell.Actor.mailbox msg;
-      match cell.Actor.waiting with
+      Mailbox.push actor.Actor.mailbox msg;
+      match actor.Actor.waiting with
       | None -> ()
       | Some (filter, k) ->
-        (match Mailbox.take cell.Actor.mailbox filter with
+        (match Mailbox.take actor.Actor.mailbox filter with
          | exception exn ->
-           cell.Actor.waiting <- None;
+           actor.Actor.waiting <- None;
            enqueue state (fun () ->
-             if cell.Actor.alive then Stdlib.Effect.Deep.discontinue k exn)
+             if actor.Actor.alive then Stdlib.Effect.Deep.discontinue k exn)
          | None -> ()
          | Some m ->
-           cell.Actor.waiting <- None;
+           actor.Actor.waiting <- None;
            enqueue state (fun () ->
-             if cell.Actor.alive then Stdlib.Effect.Deep.continue k m)))
+             if actor.Actor.alive then Stdlib.Effect.Deep.continue k m)))
   ;;
 
   let rec handler
     : type a. state -> a Actor.t -> (unit, unit) Stdlib.Effect.Deep.handler
     =
-    fun state cell ->
-    { Stdlib.Effect.Deep.retc = (fun () -> finish cell)
+    fun state actor ->
+    { Stdlib.Effect.Deep.retc = (fun () -> finish actor)
     ; exnc =
         (fun e ->
-          finish cell;
+          finish actor;
           raise e)
     ; effc =
         (fun (type b) (eff : b Stdlib.Effect.t) ->
@@ -110,7 +110,7 @@ module Make (R : Io_readiness.S) = struct
           | Actor.Receive (self, filter) ->
             Some
               (fun k ->
-                if not (Actor.equal self cell)
+                if not (Actor.equal self actor)
                 then
                   Stdlib.Effect.Deep.discontinue
                     k
@@ -121,18 +121,18 @@ module Make (R : Io_readiness.S) = struct
                   | exception exn -> Stdlib.Effect.Deep.discontinue k exn
                   | Some m -> Stdlib.Effect.Deep.continue k m
                   | None ->
-                    if cell.Actor.alive
+                    if actor.Actor.alive
                     then self.Actor.waiting <- Some (filter, k)))
           | Actor.Await_readable fd ->
             Some
               (fun k ->
-                if cell.Actor.alive
-                then await_readable state (Actor.Packed cell) fd k)
+                if actor.Actor.alive
+                then await_readable state (Actor.Packed actor) fd k)
           | Actor.Sleep seconds ->
             Some
               (fun k ->
-                if cell.Actor.alive
-                then sleep state (Actor.Packed cell) seconds k)
+                if actor.Actor.alive
+                then sleep state (Actor.Packed actor) seconds k)
           | Actor.Stop target ->
             Some
               (fun k ->
