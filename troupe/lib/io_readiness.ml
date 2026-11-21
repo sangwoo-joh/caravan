@@ -1,11 +1,20 @@
+type timeout = [ `Int of int | `Float of float | `Infinite | `Default ]
+
 module type S = sig
   type t
 
   val create : unit -> t
   val watch_readable_fd : t -> Unix.file_descr -> unit
   val unwatch_readable_fd : t -> Unix.file_descr -> unit
-  val wait : t -> timeout:float option -> (Unix.file_descr -> unit) -> unit
+  val wait : t -> ?timeout:timeout -> (Unix.file_descr -> unit) -> unit
 end
+
+let timeout_seconds = function
+  | `Int s -> Some (float_of_int (max 0 s))
+  | `Float s -> Some (Float.max 0. s)
+  | `Infinite -> None
+  | `Default -> Some 600.
+;;
 
 module Select : S = struct
   type t = { mutable readers : Unix.file_descr list }
@@ -18,11 +27,11 @@ module Select : S = struct
 
   let unwatch_readable_fd t fd = t.readers <- List.filter (fun x -> x <> fd) t.readers
 
-  let wait t ~timeout f =
+  let wait t ?(timeout = `Default) f =
     let tmo =
-      match timeout with
+      match timeout_seconds timeout with
       | None -> -1.0
-      | Some s -> Float.max 0.0 s
+      | Some s -> s
     in
     let ready, _, _ = Unix.select t.readers [] [] tmo in
     List.iter f ready
@@ -66,12 +75,12 @@ module Poll : S = struct
       t.count <- last
   ;;
 
-  let wait t ~timeout f =
+  let wait t ?(timeout = `Default) f =
     let tmo : P.poll_timeout =
-      match timeout with
+      match timeout_seconds timeout with
       | None -> P.Infinite
       | Some s ->
-        let milliseconds = Float.ceil (Float.max 0. s *. 1000.) in
+        let milliseconds = Float.ceil (s *. 1000.) in
         let limit =
           Float.min (Int32.to_float Int32.max_int) (float_of_int max_int)
         in

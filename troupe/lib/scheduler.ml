@@ -178,7 +178,7 @@ module Make (R : Io_readiness.S) = struct
     if
       (not (Queue.is_empty state.run_queue))
       && Hashtbl.length state.fd_waiters > 0
-    then wait state (Some 0.);
+    then wait state (`Int 0);
     match Queue.take_opt state.run_queue with
     | Some thunk ->
       thunk ();
@@ -189,8 +189,8 @@ module Make (R : Io_readiness.S) = struct
       else (
         let timeout =
           match earliest state () with
-          | None -> None
-          | Some d -> Some (Float.max 0.0 (d -. Unix.gettimeofday ()))
+          | None -> `Infinite
+          | Some d -> `Float (Float.max 0.0 (d -. Unix.gettimeofday ()))
         in
         wait state timeout;
         loop state ())

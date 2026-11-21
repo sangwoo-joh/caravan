@@ -165,7 +165,7 @@ graph LR
 ```
 loop:
   run queue nonempty      -> pop and run the next thunk
-  else fd/timer waiters?  -> timeout = earliest timer deadline (or None)
+  else fd/timer waiters?  -> timeout = seconds until earliest timer (or `Infinite)
                              R.wait io_readiness ~timeout (wake ready fds)
                              fire expired timers
   else                    -> quiescent: return
