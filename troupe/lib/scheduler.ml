@@ -143,10 +143,6 @@ module Make (R : Io_readiness.S) = struct
     }
   ;;
 
-  let run_action state action cell =
-    Stdlib.Effect.Deep.match_with action cell (handler state cell)
-  ;;
-
   let earliest state () =
     match state.timers with
     | [] -> None
@@ -205,7 +201,8 @@ module Make (R : Io_readiness.S) = struct
       }
     in
     let root : unit Actor.t = Actor.create () in
-    enqueue state (fun () -> run_action state (fun _ -> main ()) root);
+    enqueue state (fun () ->
+      Stdlib.Effect.Deep.match_with main () (handler state root));
     loop state ()
   ;;
 end
